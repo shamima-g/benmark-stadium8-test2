@@ -581,13 +581,14 @@ There are two entry paths here:
    node .claude/scripts/timing-report.js
    node .claude/scripts/token-report.js
    node .claude/scripts/build-estimates.js render
+   node .claude/scripts/per-page-report.js
    node .claude/scripts/transition-phase.js --feature-complete --verify-output
    ```
 
-   Run the timing **and** token reports **before** `--feature-complete` (both hooks stop logging once that flag is set). `timing-report.js` writes `generated-docs/timing/timing-report.md`; read the printed total and include it below. `token-report.js` writes `generated-docs/timing/token-report.md`; read its printed total-tokens and estimated-cost line and include them below. `build-estimates.js render` runs **after** the timing report (it joins the actuals `timing-report.js` just wrote into `timing-summary.json`) and reconciles estimate-vs-actual into `generated-docs/timing/build-estimates.md`. If no estimates were ever recorded the render is a harmless no-op — don't treat its error as a failure.
+   Run the timing **and** token reports **before** `--feature-complete` (both hooks stop logging once that flag is set). `timing-report.js` writes `generated-docs/timing/timing-report.md`; read the printed total and include it below. `token-report.js` writes `generated-docs/timing/token-report.md`; read its printed total-tokens and estimated-cost line and include them below. `build-estimates.js render` runs **after** the timing report (it joins the actuals `timing-report.js` just wrote into `timing-summary.json`) and reconciles estimate-vs-actual into `generated-docs/timing/build-estimates.md`. If no estimates were ever recorded the render is a harmless no-op — don't treat its error as a failure. `per-page-report.js` runs **last** (after the three summaries above are fresh on disk): it joins estimate + actual time + tokens/cost into one per-**page** (per-wireframe) table at `generated-docs/timing/per-page-report.md`, with infrastructure-only stories listed separately. It reads the just-written summaries, so it needs no `--refresh` here.
 
    ```
-   [Feature name] is fully implemented and committed. [Total commits] commits across [N] epics. Active build time: [total from timing report] (manual/wait time excluded). Token spend: [total tokens from token report] (~[estimated cost]). Full breakdowns in generated-docs/timing/timing-report.md, generated-docs/timing/token-report.md, and estimate-vs-actual in generated-docs/timing/build-estimates.md.
+   [Feature name] is fully implemented and committed. [Total commits] commits across [N] epics. Active build time: [total from timing report] (manual/wait time excluded). Token spend: [total tokens from token report] (~[estimated cost]). Full breakdowns in generated-docs/timing/timing-report.md, generated-docs/timing/token-report.md, estimate-vs-actual in generated-docs/timing/build-estimates.md, and a combined per-page (estimate vs actual vs tokens) view in generated-docs/timing/per-page-report.md.
    ```
 
    Stop here. `/continue` re-entered later picks up Path 2 below.
