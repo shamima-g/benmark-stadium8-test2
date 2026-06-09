@@ -1,0 +1,272 @@
+name: Publish to Release Repo
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Preview what would be published without pushing'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+env:
+  RELEASE_REPO: Digiata/Stadium-8
+  DEV_REPO: stadium-software/stadium-8
+
+jobs:
+  publish:
+    name: Publish to release repo
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout dev repo
+        uses: actions/checkout@v4
+        with:
+          path: dev-repo
+
+      # GitHub App with Contents:write on the release repo.
+      # Secrets: RELEASE_APP_ID, RELEASE_APP_PRIVATE_KEY
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: Digiata
+          repositories: Stadium-8
+
+      - name: Checkout release repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RELEASE_REPO }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: release-repo
+
+      - name: Prepare staging directory
+        run: |
+          mkdir -p staging
+
+          rsync -av \
+            --exclude-from='dev-repo/.release-ignore' \
+            --exclude='.git/' \
+            dev-repo/ staging/
+
+      - name: Preserve release repo README
+        run: |
+          if [ -f release-repo/README.md ]; then
+            cp release-repo/README.md staging/README.md
+            echo "Preserved release repo README.md"
+          else
+            echo "No README.md found in release repo — skipping"
+          fi
+
+      - name: Select workflow-user CLAUDE.md
+        run: |
+          set -euo pipefail
+          # The dev CLAUDE.md is maintainer-only; users get CLAUDE.user.md.
+          # Swap it into place and drop the dev copy. Verified below.
+          if [ ! -f staging/CLAUDE.user.md ]; then
+            echo "FAIL: staging/CLAUDE.user.md missing"
+            exit 1
+          fi
+          mv staging/CLAUDE.user.md staging/CLAUDE.md
+          echo "Swapped CLAUDE.user.md -> CLAUDE.md for release channel"
+
+      - name: Rewrite template source for release channel
+        run: |
+          set -euo pipefail
+
+          # The dev repo ships sync-template.yml + Template-Sync.md with the dev
+          # source as the default. Release consumers should default to the release
+          # source instead. The Verify step below fails the publish if any rewrite
+          # doesn't land.
+
+          RELEASE_OWNER="${RELEASE_REPO%%/*}"
+          DEV_OWNER="${DEV_REPO%%/*}"
+
+          sed -i "s#TEMPLATE_SOURCE_REPO || '$DEV_REPO'#TEMPLATE_SOURCE_REPO || '$RELEASE_REPO'#" \
+            staging/.github/workflows/sync-template.yml
+
+          sed -i -E \
+            -e "s|Open the template repo \(\`$DEV_REPO\`\)|Open the template repo (\`$RELEASE_REPO\`)|" \
+            -e "s|Resource owner:\*\* \`$DEV_OWNER\`|Resource owner:** \`$RELEASE_OWNER\`|" \
+            -e "s|pick \`$DEV_REPO\`|pick \`$RELEASE_REPO\`|" \
+            staging/.template-docs/users/Help/Template-Sync.md
+
+      - name: Verify staging content
+        run: |
+          echo "=== Excluded files (should NOT appear) ==="
+          for f in \
+            ".template-docs/template-maintainers/CONTRIBUTING.md" \
+            ".template-docs/template-maintainers/TEMPLATE_DEVELOPMENT.md" \
+            ".release-ignore" \
+            "CLAUDE.user.md" \
+            ".github/workflows/publish-template.yml"; do
+            if [ -f "staging/$f" ]; then
+              echo "FAIL: $f should have been excluded"
+              exit 1
+            else
+              echo "OK: $f excluded"
+            fi
+          done
+
+          echo ""
+          echo "=== Key files (should appear) ==="
+          for f in \
+            "CLAUDE.md" \
+            "CHANGELOG.md" \
+            "web/package.json" \
+            ".claude/settings.json" \
+            ".github/workflows/quality-gates.yml" \
+            ".github/workflows/sync-template.yml"; do
+            if [ -f "staging/$f" ]; then
+              echo "OK: $f present"
+            else
+              echo "FAIL: $f missing"
+              exit 1
+            fi
+          done
+
+          echo ""
+          echo "=== Release channel rewrites ==="
+          assert_present() {
+            # $1=pattern, $2=file, $3=label
+            if grep -qF "$1" "$2"; then
+              echo "OK: $3"
+            else
+              echo "FAIL: $3"
+              exit 1
+            fi
+          }
+          assert_absent() {
+            # $1=pattern, $2=file, $3=label
+            if grep -qF "$1" "$2"; then
+              echo "FAIL: $3"
+              exit 1
+            else
+              echo "OK: $3"
+            fi
+          }
+
+          SYNC=staging/.github/workflows/sync-template.yml
+          DOC=staging/.template-docs/users/Help/Template-Sync.md
+          RELEASE_OWNER="${RELEASE_REPO%%/*}"
+          DEV_OWNER="${DEV_REPO%%/*}"
+
+          assert_present "TEMPLATE_SOURCE_REPO || '$RELEASE_REPO'" "$SYNC" "sync workflow defaults to $RELEASE_REPO"
+          assert_absent  "TEMPLATE_SOURCE_REPO || '$DEV_REPO'" "$SYNC" "sync workflow no longer references dev source as default"
+
+          assert_present "Open the template repo (\`$RELEASE_REPO\`)" "$DOC" "setup doc references $RELEASE_REPO for workflow file updates"
+          assert_absent  "Open the template repo (\`$DEV_REPO\`)" "$DOC" "setup doc no longer references dev source for workflow file updates"
+
+          assert_present "Resource owner:** \`$RELEASE_OWNER\`" "$DOC" "setup doc Resource owner rewritten to $RELEASE_OWNER"
+          assert_absent  "Resource owner:** \`$DEV_OWNER\`" "$DOC" "setup doc Resource owner no longer references $DEV_OWNER"
+
+          assert_present "pick \`$RELEASE_REPO\`" "$DOC" "setup doc PAT target rewritten to $RELEASE_REPO"
+          assert_absent  "pick \`$DEV_REPO\`" "$DOC" "setup doc PAT target no longer references dev source"
+
+          echo ""
+          echo "=== CLAUDE.md variant ==="
+          CLAUDE=staging/CLAUDE.md
+          assert_present "stadium8-claude: user" "$CLAUDE" "shipped CLAUDE.md is the workflow-user variant"
+          assert_absent  "stadium8-claude: template-dev" "$CLAUDE" "shipped CLAUDE.md is not the template-dev variant"
+
+          echo ""
+          echo "=== File count ==="
+          find staging -type f | wc -l
+
+      - name: Configure release repo
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd release-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Publish to release repo
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd release-repo
+
+          # Workflow files are NOT pushed here: the release-repo GitHub App lacks the
+          # `workflows` permission, so any change under .github/workflows/ is rejected
+          # by GitHub. They're maintained manually in the release repo — see the
+          # "Creating a Release" steps in CONTRIBUTING.md. Excluding the dir also
+          # protects the release repo's existing workflows from --delete.
+          rsync -a --delete --exclude='.git' --exclude='.github/workflows/' ../staging/ .
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to publish"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            COMMIT_MSG="release: ${{ github.event.release.tag_name }}"
+          else
+            COMMIT_MSG="release: manual publish from $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          fi
+
+          git commit -m "$COMMIT_MSG"
+          git push origin main
+
+          echo "Published to ${{ env.RELEASE_REPO }}"
+
+      - name: Tag release repo
+        if: ${{ github.event_name == 'release' && github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd release-repo
+          TAG="${{ github.event.release.tag_name }}"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — skipping"
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+            echo "Tagged ${{ env.RELEASE_REPO }} with $TAG"
+          fi
+
+      - name: Publish release notes to release repo
+        if: ${{ github.event_name == 'release' && github.event.inputs.dry_run != 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          # Passed via env (not inlined into the script) to avoid shell injection
+          # from release-body contents.
+          RELEASE_BODY: ${{ github.event.release.body }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+
+          # Mirror the dev release's notes onto the release repo so consumers see the
+          # same changelog. The tag already exists (previous step) and the App's
+          # Contents:write permission covers releases. Idempotent: a publish re-run
+          # edits the existing release instead of failing.
+          PRERELEASE_FLAG=""
+          if [ "$IS_PRERELEASE" = "true" ]; then PRERELEASE_FLAG="--prerelease"; fi
+
+          if gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$RELEASE_REPO" \
+              --title "${RELEASE_NAME:-$TAG}" --notes "$RELEASE_BODY" $PRERELEASE_FLAG
+            echo "Updated release notes for $TAG on $RELEASE_REPO"
+          else
+            gh release create "$TAG" --repo "$RELEASE_REPO" \
+              --title "${RELEASE_NAME:-$TAG}" --notes "$RELEASE_BODY" $PRERELEASE_FLAG
+            echo "Created release $TAG on $RELEASE_REPO"
+          fi
+
+      - name: Dry run summary
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          echo "=== DRY RUN — no changes pushed ==="
+          echo ""
+          echo "Files that would be published:"
+          find staging -type f | sort
+          echo ""
+          echo "Total files: $(find staging -type f | wc -l)"

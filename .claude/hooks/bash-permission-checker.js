@@ -1,0 +1,915 @@
+#!/usr/bin/env node
+/**
+ * PreToolUse hook that auto-approves safe Bash commands for Claude Code.
+ *
+ * Receives tool call JSON via stdin, checks against deny/allow patterns,
+ * and outputs permission decision JSON.
+ *
+ * Exit codes:
+ * - 0 with JSON output: Command approved
+ * - 0 without output: Falls through to normal permission system
+ * - 2: Block the command
+ *
+ * Location: .claude/hooks/bash-permission-checker.js
+ * Ported from: .claude/hooks/bash-permission-checker.ps1
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+// =============================================================================
+// READ STDIN
+// =============================================================================
+let inputJson;
+try {
+  const raw = fs.readFileSync(0, 'utf8'); // fd 0 = stdin
+  inputJson = JSON.parse(raw);
+} catch {
+  process.exit(0);
+}
+
+if (inputJson.tool_name !== 'Bash') process.exit(0);
+
+let command = inputJson.tool_input?.command;
+if (!command) process.exit(0);
+
+// =============================================================================
+// HELPERS
+// =============================================================================
+
+function writeAllowAndExit(reason) {
+  const output = JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'allow',
+      permissionDecisionReason: reason,
+    },
+  });
+  process.stdout.write(output);
+  process.exit(0);
+}
+
+function denyAndExit(msg) {
+  process.stderr.write(msg + '\n');
+  process.exit(2);
+}
+
+/** Case-insensitive regex test (for one-off checks only; hot-path loops use pre-compiled) */
+function iMatch(str, re) {
+  return re.test(str);
+}
+
+// =============================================================================
+// NORMALIZATION - strip harmless trailing suffixes (redirects, &, |)
+// =============================================================================
+
+const trailingSuffixPatterns = [
+  /\s+2>(?:&1|\/dev\/null)\s*$/,
+  /\s+>\s*\/dev\/null\s*$/,
+  /\s+2?>\s*\/tmp\/[\w.-]+\s*$/,
+  /\s+&>\s*\/tmp\/[\w.-]+\s*$/,
+  // PowerShell stream redirects to $null (the shell is PowerShell on Windows):
+  // `2>$null`, `>$null`, `1>$null`, `*>$null`. `$null` is case-insensitive in PowerShell.
+  /\s+(?:\*|\d)?>\s*\$null\s*$/i,
+  /\s+&\s*$/,
+  /\s+\|\s*$/,
+];
+
+function stripTrailingSuffix(cmd) {
+  let prev;
+  do {
+    prev = cmd;
+    for (const re of trailingSuffixPatterns) {
+      cmd = cmd.replace(re, '').trim();
+    }
+  } while (cmd !== prev);
+  return cmd;
+}
+
+/** Collapse bash line continuations (backslash-newline) into a single space */
+function collapseLineContinuations(cmd) {
+  return cmd.replace(/\\\n\s*/g, ' ');
+}
+
+command = collapseLineContinuations(command);
+command = stripTrailingSuffix(command);
+
+// =============================================================================
+// COMPOUND COMMAND SPLITTER
+// =============================================================================
+
+function splitCompoundCommand(text) {
+  const commands = [];
+  let current = '';
+  let i = 0;
+  const len = text.length;
+  let state = 'NORMAL';
+  let heredocDelimiter = null;
+  let parenDepth = 0;
+
+  while (i < len) {
+    const c = text[i];
+
+    if (state === 'SINGLE_QUOTE') {
+      current += c;
+      if (c === "'") state = 'NORMAL';
+      i++;
+      continue;
+    }
+
+    if (state === 'DOUBLE_QUOTE') {
+      current += c;
+      if (c === '\\' && i + 1 < len && text[i + 1] === '"') {
+        current += text[i + 1];
+        i += 2;
+        continue;
+      }
+      if (c === '"') state = 'NORMAL';
+      i++;
+      continue;
+    }
+
+    if (state === 'HEREDOC') {
+      current += c;
+      if (c === '\n') {
+        let lineEnd = text.indexOf('\n', i + 1);
+        if (lineEnd === -1) lineEnd = len;
+        const line = text.substring(i + 1, lineEnd).trim();
+        if (line === heredocDelimiter) {
+          current += text.substring(i + 1, lineEnd);
+          i = lineEnd;
+          state = 'NORMAL';
+          heredocDelimiter = null;
+          continue;
+        }
+      }
+      i++;
+      continue;
+    }
+
+    // state === 'NORMAL'
+    if (c === "'" && parenDepth === 0) {
+      current += c;
+      state = 'SINGLE_QUOTE';
+      i++;
+      continue;
+    }
+    if (c === '"' && parenDepth === 0) {
+      current += c;
+      state = 'DOUBLE_QUOTE';
+      i++;
+      continue;
+    }
+
+    if (c === '(') {
+      parenDepth++;
+      current += c;
+      i++;
+      continue;
+    }
+    if (c === ')') {
+      parenDepth = Math.max(0, parenDepth - 1);
+      current += c;
+      i++;
+      continue;
+    }
+
+    if (parenDepth > 0) {
+      current += c;
+      i++;
+      continue;
+    }
+
+    // Heredoc detection: << [-] ['"]DELIM['"]
+    if (c === '<' && i + 1 < len && text[i + 1] === '<') {
+      current += '<<';
+      i += 2;
+      while (i < len && (text[i] === '-' || /\s/.test(text[i])) && text[i] !== '\n') {
+        current += text[i];
+        i++;
+      }
+      let quoteChar = null;
+      if (i < len && (text[i] === "'" || text[i] === '"')) {
+        quoteChar = text[i];
+        current += text[i];
+        i++;
+      }
+      const delimStart = i;
+      while (i < len && /\w/.test(text[i])) {
+        current += text[i];
+        i++;
+      }
+      heredocDelimiter = text.substring(delimStart, i);
+      if (quoteChar && i < len && text[i] === quoteChar) {
+        current += text[i];
+        i++;
+      }
+      if (heredocDelimiter.length > 0) state = 'HEREDOC';
+      continue;
+    }
+
+    // Split on &&
+    if (c === '&' && i + 1 < len && text[i + 1] === '&') {
+      const trimmed = current.trim();
+      if (trimmed) commands.push(trimmed);
+      current = '';
+      i += 2;
+      continue;
+    }
+
+    // Split on || (but NOT single |)
+    if (c === '|' && i + 1 < len && text[i + 1] === '|') {
+      const trimmed = current.trim();
+      if (trimmed) commands.push(trimmed);
+      current = '';
+      i += 2;
+      continue;
+    }
+
+    // Split on ;
+    if (c === ';') {
+      const trimmed = current.trim();
+      if (trimmed) commands.push(trimmed);
+      current = '';
+      i++;
+      continue;
+    }
+
+    // Split on newline
+    if (c === '\n') {
+      const trimmed = current.trim();
+      if (trimmed) commands.push(trimmed);
+      current = '';
+      i++;
+      continue;
+    }
+
+    // Single pipe is NOT a split point
+    current += c;
+    i++;
+  }
+
+  const trimmed = current.trim();
+  if (trimmed) commands.push(trimmed);
+
+  if (state !== 'NORMAL' || parenDepth !== 0) return null;
+  if (commands.length <= 1) return null;
+  return commands;
+}
+
+// =============================================================================
+// PIPELINE SPLITTER
+// =============================================================================
+
+function splitPipeline(text) {
+  if (text.indexOf('|') === -1) return null;
+
+  const segments = [];
+  let current = '';
+  let i = 0;
+  const len = text.length;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  while (i < len) {
+    const c = text[i];
+
+    if (inSingleQuote) {
+      current += c;
+      if (c === "'") inSingleQuote = false;
+      i++;
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      current += c;
+      if (c === '\\' && i + 1 < len && text[i + 1] === '"') {
+        current += text[i + 1];
+        i += 2;
+        continue;
+      }
+      if (c === '"') inDoubleQuote = false;
+      i++;
+      continue;
+    }
+
+    if (c === "'") {
+      current += c;
+      inSingleQuote = true;
+      i++;
+      continue;
+    }
+
+    if (c === '"') {
+      current += c;
+      inDoubleQuote = true;
+      i++;
+      continue;
+    }
+
+    // || is NOT a pipe split
+    if (c === '|' && i + 1 < len && text[i + 1] === '|') {
+      current += '||';
+      i += 2;
+      continue;
+    }
+
+    // Single | is a split point
+    if (c === '|') {
+      const trimmed = current.trim();
+      if (trimmed) segments.push(trimmed);
+      current = '';
+      i++;
+      continue;
+    }
+
+    current += c;
+    i++;
+  }
+
+  const trimmed = current.trim();
+  if (trimmed) segments.push(trimmed);
+
+  if (inSingleQuote || inDoubleQuote) return null;
+  if (segments.length <= 1) return null;
+  return segments;
+}
+
+// =============================================================================
+// PREFERENCES
+// =============================================================================
+
+function getPreferences() {
+  try {
+    const configPath = path.join(__dirname, '..', 'preferences.json');
+    return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+const prefs = getPreferences();
+
+// =============================================================================
+// DENY PATTERNS
+// =============================================================================
+
+const fileReadCmdsBase = 'cat|type|Get-Content|more|less|head|tail|sed|awk';
+const fileReadCmds = '(' + fileReadCmdsBase + ')';
+// safeDirs (narrow) — used for deny-bypass in isSafeDirCommand and for write-adjacent ops (mkdir, PowerShell, start "").
+// Do NOT add `src` here: would let `cat src/id_rsa`-style commands bypass the secret-file deny patterns.
+const safeDirs = '(documentation|web|generated-docs|\\.claude|\\.github|\\.next)';  // .next = Next.js build output (read-only, regenerable)
+// safeDirsRead (broader) — used for pure-read allow patterns (cat/type/head/tail/sed/grep/wc/diff/ls/cp-source).
+// Adds `src` with a boundary lookbehind so `my-src/`, `mysrc/`, `_src/` do NOT match — only paths where `src` is
+// a top-level dir or immediately follows `/`, `\`, `"`, `'`. Because `src` is NOT in safeDirs (the bypass variable),
+// reads of `src/id_rsa`, `src/.env`, etc. are still caught by the secret deny patterns below.
+// Also includes the regenerable build/test artifact dirs (.next/test-results/playwright-report/coverage) so agents
+// can read debug output (error-context snapshots, reports, coverage). These are read-only here — NOT in safeDirs —
+// so secret-named files inside them (e.g. test-results/credentials.md) are still caught by the deny patterns.
+// Shared list of REGENERABLE build/test artifact dir names. Referenced by both
+// safeDirsRead (read-allow, below) and regenArtifacts (rm -rf allow, further down) so
+// the two can never drift — add a new artifact dir here and both rules pick it up.
+const regenArtifactDirs = '\\.next|test-results|playwright-report|coverage';
+const safeDirsRead = '(documentation|web|generated-docs|\\.claude|\\.github|' + regenArtifactDirs + '|(?:(?<=^|[\\s"\'/\\\\])src))';
+const safeDirsWrite = '(web|\\.claude[/\\\\](?:context|scripts)|generated-docs)';
+const absPathChar = '[\\w./:~\\\\()\\[\\]-]';  // single path char (absolute paths: includes colon, tilde, brackets for Next.js dynamic routes)
+// Quoted-context path char: same as absPathChar plus space. Use ONLY inside "..."/'...' alternatives
+// where the surrounding quotes guarantee the value is one shell token. Excludes shell metachars
+// ($, `, ") so command substitution / quote-escapes inside a quoted path still fall through.
+const absPathCharQ = '[\\w./:~\\\\()\\[\\] -]';
+// Single path token: bare (no spaces), double-quoted (spaces ok), or single-quoted (spaces ok).
+// Use anywhere a single path argument may appear quoted-or-bare. Shell metachars rejected via absPathCharQ.
+const pathTok = '(?:"' + absPathCharQ + '+"|\'' + absPathCharQ + '+\'|' + absPathChar + '+)';
+const gitGlobalOpts = '(?:(?:-C\\s+' + pathTok + '|--(?:work-tree|git-dir)=' + pathTok + '|--no-pager)\\s+)*';
+const gitCmd = 'git\\s+' + gitGlobalOpts;  // "git " + optional global options
+// One chain-safe git argument: a quoted string, or a run of chars that EXCLUDES the shell
+// operators enabling command chaining / substitution / redirection (`; & | ` + '`' + ` $ < > ( )` and
+// quotes). Bare and quoted runs glue into one token, so `--author="Jane Doe"` and
+// `--pretty=format:"%h %s"` still match as a single argument.
+const gitArgToken = '(?:"[^"]*"|\'[^\']*\'|[^\\s;&|`$<>()\'"]+)+';
+// Zero-or-more git args. Used by the read-only git allow-patterns below INSTEAD of a `.*` catch-all:
+// a `.*`/`.+` tail lets a chained command (`git log && rm -rf web/src`, `git rev-parse HEAD ; curl evil`)
+// match the WHOLE command and be auto-approved at the anchored-allow loop BEFORE the compound/pipeline
+// splitters run. With this bounded list, a shell operator breaks the match so the command falls through
+// to per-segment vetting (which prompts on the dangerous half). Benign `2>&1`/`2>/dev/null` redirects
+// are still stripped beforehand, and `git add . && git status` still allows via compound splitting.
+const gitSafeArgs = '(?:\\s+' + gitArgToken + ')*';
+
+const denyPatterns = [
+  'rm\\s+-rf\\s+/',
+  fileReadCmds + '.*id_rsa',
+  fileReadCmds + '.*\\.pem\\b',
+  fileReadCmds + '.*credentials',
+  fileReadCmds + '.*[/\\\\]\\.ssh[/\\\\]',
+  fileReadCmds + '.*private.*key',
+  fileReadCmds + '.*secret',
+  gitCmd + 'push\\s+.*--force',
+  gitCmd + 'push\\s+.*-f\\b',
+  gitCmd + 'push\\s+.*--delete',
+  gitCmd + 'push\\s+.*--no-verify',
+  gitCmd + 'commit\\s+.*--no-verify',
+  gitCmd + 'commit\\s+.*--amend',
+  // Only --hard and --keep can overwrite uncommitted working-tree changes.
+  // --soft / --mixed / `git reset HEAD <paths>` are recoverable (only move index/HEAD).
+  gitCmd + 'reset\\s+.*--hard\\b',
+  gitCmd + 'reset\\s+.*--keep\\b',
+].map(p => new RegExp(p, 'i'));
+
+// Safe-directory file path pattern
+const fileReadCmdsExt = '(' + fileReadCmdsBase + '|wc|diff)';
+const cdPrefix = '(?:cd\\s+' + pathTok + '\\s*&&\\s*)?';
+const safeDirFilePattern = new RegExp(
+  '^\\s*' + cdPrefix + fileReadCmdsExt + '\\s+(?:[-+]?[\\w-]+\\s+)*["\']?' + absPathChar + '*' + safeDirs + '[/\\\\]',
+  'i'
+);
+
+function isSafeDirCommand(cmd) {
+  return safeDirFilePattern.test(cmd);
+}
+
+// Hoist once
+const commandIsSafeDir = isSafeDirCommand(command);
+
+for (const pattern of denyPatterns) {
+  if (iMatch(command, pattern)) {
+    if (commandIsSafeDir) continue;
+    denyAndExit('Blocked by security policy: Command matches deny pattern');
+  }
+}
+
+// =============================================================================
+// ALWAYS-DENY PATTERNS — not subject to safe-dir bypass
+// =============================================================================
+// These protect against reading credential-like files even inside safe dirs,
+// and cover grep (which the deny-bypass intentionally excludes for broader `.*secret`
+// patterns — quoting "secret" as a grep search term is a legitimate use case).
+// Secret-token boundary (lookahead, non-consuming): the credential-like leaf ends here —
+// followed by whitespace (another argument), end-of-string, pipeline `|`, or compound `&`/`;`.
+// The whitespace case is what catches a secret in a NON-final argument position
+// (e.g. `cat web/.env web/a.ts`), which multi-path read patterns now allow.
+const segEnd = '(?=$|\\s|[|&;])';
+// File leaf beginning with `.env` — require `.env` at a path boundary (after `/`, `\`, or start of file arg)
+// to avoid false positives on files like `web/src/config.env.ts`.
+const dotEnvLeaf = '(?:\\S*[/\\\\])?\\.env(?:\\.\\w+)?';
+const alwaysDenyPatterns = [
+  // Any read of a .env / .env.* file, even in safe dirs (cat/head/tail/sed/awk/less/more/type)
+  fileReadCmds + '\\b[^|;&]*\\s+' + dotEnvLeaf + segEnd,
+  // Grep reading obvious secret file paths (anchored to segment end = file arg)
+  'grep\\b[^|;&]*\\s+\\S*[/\\\\]id_rsa(?:\\.\\w+)?' + segEnd,
+  'grep\\b[^|;&]*\\s+\\S*\\.pem' + segEnd,
+  'grep\\b[^|;&]*\\s+\\S*[/\\\\]\\.ssh[/\\\\]\\S*' + segEnd,
+  'grep\\b[^|;&]*\\s+' + dotEnvLeaf + segEnd,
+  'grep\\b[^|;&]*\\s+\\S*[/\\\\]credentials(?:\\.\\w+)?' + segEnd,
+  'grep\\b[^|;&]*\\s+\\S*private[_-]?key(?:\\.\\w+)?' + segEnd,
+].map(p => new RegExp(p, 'i'));
+
+for (const pattern of alwaysDenyPatterns) {
+  if (iMatch(command, pattern)) {
+    denyAndExit('Blocked by security policy: Command attempts to read a credential-like file');
+  }
+}
+
+// =============================================================================
+// ALLOW PATTERNS
+// =============================================================================
+
+const winPath = '["\']?' + absPathChar + '*';
+// Same as winPath but tolerates SPACES when (and only when) the path is quoted — covers a
+// workspace under e.g. "C:\...\test samples\...". Either a quoted run (opening quote consumed
+// here, spaces allowed; the matching close is the trailing ["']? after the leaf) OR a bare run
+// (no spaces, as before). Use where a path arg may be a quoted absolute path with spaces.
+const winPathSp = '(?:["\'][\\w./:~\\\\ ()\\[\\]-]*|' + absPathChar + '*)';
+// Shared subpath char class. Brackets `[]` are included for Next.js dynamic-route dirs (`[id]`, `[...slug]`).
+// `-` is appended last in each composed class so it stays literal (avoids accidental range with `]`).
+const subPathCore = '\\w./\\\\()\\[\\]';
+const subPath = '[' + subPathCore + '-]';
+const subPathW = '(?:(?!\\.\\.[/\\\\])[' + subPathCore + '-])';  // write-safe: no path traversal
+const subPathQ = '[' + subPathCore + ' -]';                       // subpath chars including space
+const subPathE = '(?:[' + subPathCore + '-]|\\\\ )';              // subpath chars including backslash-escaped space
+const subPathEG = '(?:[' + subPathCore + '*?-]|\\\\ )';           // subPathE + glob chars (* ?) for grep path args like `web/*.ts`
+// A single safe-dir file argument (bare, no spaces). Reused so cat/head/tail/wc can each
+// accept one-or-more file args via `(?:\s+safeReadFile)+` — mirrors grep's multi-path support.
+// No glob chars here on purpose: content-dumping commands must not match dotfile globs
+// (e.g. `cat web/.env*`) that would slip past the .env always-deny rule.
+const safeReadFile = winPath + safeDirsRead + '[/\\\\]' + subPathE + '+["\']?';
+const npmPrefix = '(?:--prefix\\s+' + pathTok + '\\s+)?';
+const envPrefix = '(?:[A-Z_][A-Z0-9_]*=["\']?[\\w./:~= -]+["\']?\\s+)*';  // optional VAR=value prefixes (with optional quotes)
+const cdEnvPrefix = cdPrefix + envPrefix;
+// Single source of truth for dev-tool names allowed via npm exec / npx / node_modules/.bin.
+// Keep this list in sync; the three patterns below all reference it.
+const devTools = 'tsc|vitest|next|eslint|msw|playwright|prettier|shadcn';
+// Curated allowlist of REGENERABLE build/test artifact dirs that are safe to `rm -rf`
+// (no source/data loss — each is rebuilt on the next build/test run). Used by the
+// tightly-anchored destructive-rm allow below. Shares the core dir list with
+// safeDirsRead via regenArtifactDirs; adds `node_modules/.cache` (rm-target only —
+// never bare `node_modules`). To extend the shared dirs, edit regenArtifactDirs.
+const regenArtifacts = '(?:' + regenArtifactDirs + '|node_modules[/\\\\]\\.cache)';
+// A single safe `rm -rf` target: `[./][web/]<artifact>[/<subpath>]`. The optional subpath
+// uses subPathW (write-safe — its `(?!\.\.[/\\])` guard blocks `../` traversal), so anything
+// strictly INSIDE a regenerable artifact dir is allowed while `.next/../src` is not.
+const rmTarget = '["\']?(?:\\.[/\\\\])?(?:web[/\\\\])?' + regenArtifacts + '(?:[/\\\\]' + subPathW + '*)?["\']?';
+// Well-known, non-secret root manifest files agents read by bare name (e.g. after `cd web`).
+// Read-only allow only. Excludes `.npmrc` (can hold registry auth tokens).
+const rootManifests = '(?:package|package-lock|tsconfig(?:\\.[\\w-]+)?|jsconfig|components)\\.json';
+// A BARE manifest leaf (e.g. `package.json`, `tsconfig.build.json`) — no path prefix.
+// Shared by the cat/type/head|tail manifest-read patterns below so they stay in sync.
+// Deliberately NOT path-prefixed: an arbitrary `(?:absPathChar*[/\\])?` prefix auto-approves
+// `cat ../../../etc/package.json` / `cat /etc/package.json` (no safe-dir anchor, no ../ guard).
+// Safe-dir-prefixed manifests (`cat web/package.json`) are already covered by the general
+// safe-read patterns (safeReadFile), so this leaf-only form loses no legitimate read.
+const manifestArg = '["\']?' + rootManifests + '["\']?';
+const grepFlags = '(?:\\s+-[\\w]+(?:\\s+\\d+)?)*';  // grep flags with optional numeric arg (e.g. -A 3, -C 2)
+// Search term for grep / xargs grep: double-quoted (may contain '), single-quoted
+// (may contain "), or a bare token. One constant so every grep allow-pattern stays in lockstep.
+const grepTerm = '(?:"[^"]*"|\'[^\']*\'|\\S+)';
+
+// curl flag value: double-quoted (allows ${VAR}/$VAR, blocks $(...) and backticks),
+// single-quoted (literal), or bare token (no shell metachars).
+// Bare token must not start with `-` — otherwise `-X` is ambiguously parsable as either
+// the previous flag's value or the next flag, causing catastrophic backtracking on
+// failing matches with many flag-shaped tokens.
+const curlValue =
+  '(?:' +
+    '"(?:[^"$`\\\\]|\\\\.|\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}|\\$[A-Za-z_][A-Za-z0-9_]*)*"' +
+    '|' +
+    "'[^']*'" +
+    '|' +
+    '[\\w./%{}=:,@+~][\\w./%{}=:,@+~-]*' +
+  ')';
+const curlFlag = '\\s+-{1,2}[\\w-]+(?:\\s+(?!https?://)' + curlValue + ')?';
+
+let allowPatterns = [
+  // --- NPM ---
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'ci(?:\\s+--[\\w-]+)*\\s*$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'install(?:\\s+--[\\w-]+)*\\s*$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'i(?:\\s+--[\\w-]+)*\\s*$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'install(?:\\s+--[\\w-]+)*(?:\\s+@types/[\\w-]+)+\\s*$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'i(?:\\s+--[\\w-]+)*(?:\\s+@types/[\\w-]+)+\\s*$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'install(?:\\s+--[\\w-]+)*(?:\\s+@radix-ui/[\\w-]+)+\\s*$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'i(?:\\s+--[\\w-]+)*(?:\\s+@radix-ui/[\\w-]+)+\\s*$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'install(?:\\s+--[\\w-]+)*\\s+msw(?:\\s+--[\\w-]+)*\\s*$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'i(?:\\s+--[\\w-]+)*\\s+msw(?:\\s+--[\\w-]+)*\\s*$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'test(?:\\s+.*)?$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 't(?:\\s+.*)?$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'run\\s+(build|lint|dev|format|test|typecheck|tsc|check|generate)(?::\\w+)?(?:\\s+.*)?$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'audit(?:\\s+.*)?$',
+  cdEnvPrefix + 'npm\\s+' + npmPrefix + 'exec\\s+(?:--\\s+)?(?:' + devTools + ')(?:\\s+.*)?$',
+  cdPrefix + '(?:test\\s+-d|\\[\\s+-d)\\s+node_modules\\s*\\]?(?:\\s*[&|]+\\s*(?:echo\\s+["\'].*["\']|\\(echo\\s+["\'].*["\']\\)|\\(?npm\\s+install\\)?)\\s*)*$',
+  cdPrefix + 'if\\s+exist\\s+["\']?node_modules[/\\\\]?["\']?\\s*(?:\\(.*\\)\\s*)?(?:else\\s*\\(.*\\)\\s*)?$',
+
+  // --- NPX / bare dev tools ---
+  cdEnvPrefix + 'npx\\s+' + npmPrefix + '(?:' + devTools.replace('shadcn', 'shadcn(?:@[\\w.]+)?') + ')(?:\\s+.*)?$',
+  cdEnvPrefix + 'node_modules[/\\\\]\\.bin[/\\\\](?:' + devTools + ')(?:\\s+.*)?$',
+  cdEnvPrefix + '(tsc|vitest|eslint|prettier)(?:\\s+.*)?$',
+
+  // --- Node scripts (safe directories only) ---
+  // winPathSp lets the path prefix carry spaces when quoted (workspace under "...\test samples\..."),
+  // so an absolute quoted script path auto-approves just like a relative one.
+  cdEnvPrefix + 'node\\s+' + winPathSp + '\\.claude[/\\\\]scripts[/\\\\]' + subPath + '+["\']?(?:\\s+.*)?$',
+  cdEnvPrefix + 'node\\s+' + winPathSp + 'web[/\\\\]' + subPath + '+["\']?(?:\\s+.*)?$',
+  cdEnvPrefix + 'node\\s+' + winPathSp + 'generated-docs[/\\\\]' + subPath + '+["\']?(?:\\s+.*)?$',
+  cdEnvPrefix + 'node\\s+' + winPathSp + '\\.github[/\\\\]scripts[/\\\\]' + subPath + '+["\']?(?:\\s+.*)?$',
+
+  // --- Directory operations (safe directories) ---
+  cdPrefix + 'mkdir\\s+(?:-p\\s+)?(?:' + winPathSp + safeDirsRead + '[/\\\\]?' + subPath + '*["\']?\\s*)+$',
+
+  // --- File reading (safe directories only; uses safeDirsRead → includes `src` with boundary anchor) ---
+  cdPrefix + 'sed\\s+-n\\s+.+\\s+' + safeReadFile + '\\s*$',
+  cdPrefix + 'cat(?:\\s+' + safeReadFile + ')+\\s*$',
+  cdPrefix + 'cat\\s+node_modules/[\\w@.*/-]+\\.\\w+\\s*$',
+  cdPrefix + 'type\\s+' + safeReadFile + '\\s*$',
+  // Config files: extension may be a glob (`next.config.*`) to cover the ambiguous
+  // .js/.mjs/.ts/.cjs case. Safe — the literal `.config.` anchor can never match a
+  // bare dotfile secret like `.env`/`.env.local` (those have no `.config.` segment).
+  cdPrefix + 'cat\\s+' + winPath + '[\\w.-]+\\.config\\.[\\w*?]+["\']?\\s*$',
+  cdPrefix + 'type\\s+' + winPath + '[\\w.-]+\\.config\\.[\\w*?]+["\']?\\s*$',
+  // Well-known root manifest files (see `rootManifests`) — readable bare or path-prefixed,
+  // e.g. `cat package.json`. The prefix requires a trailing separator, so the manifest must
+  // be a path leaf (`mypackage.json` does NOT match).
+  cdPrefix + 'cat\\s+' + manifestArg + '\\s*$',
+  cdPrefix + 'type\\s+' + manifestArg + '\\s*$',
+  cdPrefix + '(head|tail)(?:\\s+[-+]?[\\w]+)*\\s+' + manifestArg + '\\s*$',
+  cdPrefix + 'grep' + grepFlags + '\\s+' + grepTerm + '(?:\\s+' + winPathSp + safeDirsRead + '(?:[/\\\\]' + subPathEG + '*)?["\']?)+\\s*$',
+  cdPrefix + '(head|tail)(?:\\s+[-+]?[\\w]+)*(?:\\s+' + safeReadFile + ')+\\s*$',
+  cdPrefix + 'wc(?:\\s+-[lwcmL]+)*(?:\\s+' + safeReadFile + ')+\\s*$',
+  cdPrefix + 'diff(?:\\s+--?[\\w-]+)*\\s+' + safeReadFile + '\\s+' + safeReadFile + '\\s*$',
+
+  // --- Quoted paths with spaces ---
+  cdPrefix + 'sed\\s+-n\\s+.+\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsRead + '[/\\\\]' + subPathQ + '+["\']\\s*$',
+  cdPrefix + 'cat\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsRead + '[/\\\\]' + subPathQ + '+["\']\\s*$',
+  cdPrefix + 'type\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsRead + '[/\\\\]' + subPathQ + '+["\']\\s*$',
+  cdPrefix + '(head|tail)(?:\\s+[-+]?[\\w]+)*\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsRead + '[/\\\\]' + subPathQ + '+["\']\\s*$',
+  cdPrefix + 'wc(?:\\s+-[lwcmL]+)*\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsRead + '[/\\\\]' + subPathQ + '+["\']\\s*$',
+  cdPrefix + 'diff(?:\\s+--?[\\w-]+)*\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsRead + '[/\\\\]' + subPathQ + '+["\']\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsRead + '[/\\\\]' + subPathQ + '+["\']\\s*$',
+
+  // --- Pipeline filter commands (no file argument) ---
+  cdPrefix + 'xargs\\s+grep' + grepFlags + '\\s+' + grepTerm + '\\s*$',
+  cdPrefix + 'grep' + grepFlags + '\\s+' + grepTerm + '\\s*$',
+  cdPrefix + '(head|tail|cat)(?:\\s+[-+]?[\\w]+)*\\s*$',
+  // `sed -n '<line-range>p'` reading a piped stream (e.g. `grep ... | sed -n '1,30p'`).
+  // Restricted to numeric / `$` line-address printing — NOT arbitrary sed scripts, which
+  // could write files (`w`/`W`/`s///w`) or run commands (`e`). No `-i`, no file arg.
+  cdPrefix + 'sed\\s+-n\\s+["\']?(?:\\d+|\\$)(?:,(?:\\d+|\\$))?p["\']?\\s*$',
+  cdPrefix + 'wc(?:\\s+-[lwcmL]+)*\\s*$',
+  cdPrefix + '(sort|uniq|od)(?:\\s+[-\\w]+)*\\s*$',
+  cdPrefix + 'xxd(?:\\s+-[\\w]+(?:\\s+\\d+)?)*\\s*$',
+
+  // --- File copy (read from safe dirs, write to write-safe dirs, no path traversal in dest) ---
+  cdPrefix + 'cp(?:\\s+-[\\w]+)*\\s+' + safeReadFile + '\\s+' + winPath + safeDirsWrite + '[/\\\\]' + subPathW + '+["\']?\\s*$',
+  cdPrefix + 'cp(?:\\s+-[\\w]+)*\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsRead + '[/\\\\]' + subPathQ + '+["\']\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsWrite + '[/\\\\](?:(?!\\.\\.[/\\\\])[\\w./\\\\ ()-])+["\']\\s*$',
+
+  // --- File writing (safe directories only, write-safe subpath blocks ../ traversal) ---
+  cdPrefix + 'cat\\s*>\\s*' + winPath + safeDirsWrite + '[/\\\\]' + subPathW + '+["\']?\\s*$',
+  cdPrefix + 'cat\\s*>\\s*' + winPath + safeDirsWrite + '[/\\\\]' + subPathW + '+["\']?\\s*<<\\s*-?\\s*[\'"]?\\w+[\'"]?',
+  cdPrefix + 'sed\\s+-i\\S*\\s+.+\\s+' + winPath + safeDirsWrite + '[/\\\\]' + subPathW + '+["\']?\\s*$',
+  cdPrefix + 'sed\\s+-i\\S*\\s+.+\\s+["\'][\\w./:~\\\\ ()-]*' + safeDirsWrite + '[/\\\\](?:(?!\\.\\.[/\\\\])[\\w./\\\\ ()-])+["\']\\s*$',
+
+  // --- Find (any path, read-only flags only: no -exec, -execdir, -delete, -ok) ---
+  cdPrefix + 'find\\s+' + pathTok + '(?:\\s+(?:-(?:name|iname|type|maxdepth|mindepth|path)\\s+["\']?[\\w.*?/\\\\:-]+["\']?|-(?:empty|print0?)|!|-not|-o|\\\\[()]?))*\\s*$',
+
+  // --- Directory listing ---
+  cdPrefix + 'ls(?:\\s+-[\\w]+)*(?:\\s+["\']?[\\w./:~\\\\*?()\\[\\]-]+["\']?)*\\s*$',
+  cdPrefix + 'ls(?:\\s+-[\\w]+)*\\s+["\']?[\\w./:~\\\\()\\[\\]-]*' + safeDirsRead + '[/\\\\]?[\\w./\\\\*?()\\[\\]-]*["\']?(?:\\s+.*)?$',
+  cdPrefix + 'dir(?:\\s+' + winPath + '["\']?)*\\s*$',
+  cdPrefix + 'Get-ChildItem(?:\\s+.*)?$',
+
+  // --- PowerShell ---
+  'powershell\\s+-Command\\s+.*(Get-Content|Select-Object).*' + winPath + safeDirs,
+  'powershell\\s+-Command\\s+.*Set-Content.*' + winPath + safeDirsWrite,
+
+  // --- PowerShell cmdlets (direct invocation; PowerShell is the user's shell) ---
+  // New-Item creating a directory under a write-safe path. Requires `-ItemType Directory`
+  // (lookahead) so file creation isn't auto-approved. subPathW blocks ../ traversal.
+  cdPrefix + 'New-Item(?=[^|;&]*-ItemType\\s+Directory\\b)(?:\\s+(?:-ItemType\\s+Directory|-Force))*\\s+-Path\\s+' + winPathSp + safeDirsWrite + '[/\\\\]?' + subPathW + '*["\']?(?:\\s+(?:-ItemType\\s+Directory|-Force))*\\s*$',
+  cdPrefix + 'Out-Null\\s*$',
+  cdPrefix + 'Write-Output\\s+["\'][^"\']*["\']\\s*$',
+  cdPrefix + 'Write-Output\\s+' + absPathChar + '+\\s*$',
+
+  // --- Utility commands ---
+  cdPrefix + 'tasklist(?:\\s+/[\\w]+(?:\\s+["\']?[\\w.*,: ]+["\']?)?)*\\s*$',
+  // netstat is read-only (lists connections/listening ports) — used to check the dev-server port
+  cdPrefix + 'netstat(?:\\s+-[\\w]+)*\\s*$',
+  cdPrefix + 'which\\s+\\w+',
+  cdPrefix + 'where\\.exe\\s+\\w+',
+  cdPrefix + 'command\\s+-v\\s+\\w+',
+  cdPrefix + 'node\\s+--version\\s*$',
+  cdPrefix + 'npm\\s+--version\\s*$',
+  cdPrefix + 'git\\s+--version\\s*$',
+  cdPrefix + gitCmd + 'status' + gitSafeArgs + '\\s*$',
+  cdPrefix + gitCmd + 'log' + gitSafeArgs + '\\s*$',
+  cdPrefix + gitCmd + 'diff' + gitSafeArgs + '\\s*$',
+  cdPrefix + gitCmd + 'show' + gitSafeArgs + '\\s*$',
+  cdPrefix + gitCmd + 'branch(?:\\s+(?:-[avrl]+|--(?:list|all|remotes|contains|merged|no-merged)))*\\s*$',
+  cdPrefix + gitCmd + 'rev-parse' + gitSafeArgs + '\\s*$',
+  cdPrefix + gitCmd + 'remote(?:\\s+-v)?\\s*$',
+  // git stash: reversible save/restore/read ops only (changes live in the stash). EXCLUDES
+  // `drop`/`clear`, which discard stashed work — those keep prompting. Bare `git stash` (= push) allowed.
+  // Args are a bounded token list (refs/flags/`--`/paths/quoted messages), NOT a `.*` catch-all:
+  // a `.*` tail would let a chained command (`git stash pop ; rm -rf web/src`) match here and be
+  // auto-approved whole, BEFORE the compound/pipeline splitters run. With the bounded list, a `;`/`&&`/`|`
+  // breaks the match so the command falls through to per-segment vetting. Benign `2>&1 | tail` still
+  // works via the pipeline path (the redirect is stripped, `tail` is matched as its own segment).
+  cdPrefix + gitCmd + 'stash(?:\\s+(?:push|save|pop|apply|show|list)(?:\\s+(?:"[^"]*"|\'[^\']*\'|[\\w@{}./\\\\:_-]+))*)?\\s*$',
+  cdPrefix + gitCmd + 'describe' + gitSafeArgs + '\\s*$',
+  cdPrefix + gitCmd + 'check-ignore' + gitSafeArgs + '\\s*$',
+  cdPrefix + gitCmd + 'ls-files' + gitSafeArgs + '\\s*$',
+  cdPrefix + gitCmd + 'tag(?:\\s+(?:-l|--list)' + gitSafeArgs + ')?\\s*$',
+  cdPrefix + gitCmd + 'pull(?:\\s+(?:--rebase|--ff-only|--no-rebase|[\\w./-]+))*\\s*$',
+  cdPrefix + gitCmd + 'add(?:\\s+' + gitArgToken + ')+\\s*$',
+  cdPrefix + gitCmd + 'reset' + gitSafeArgs + '\\s*$',  // --hard and --keep blocked by deny patterns above
+  cdPrefix + 'pwd\\s*$',
+  cdPrefix + 'echo\\s+\\$[\\w]+\\s*$',
+
+  // --- Standalone commands ---
+  'cd\\s+' + pathTok + '\\s*$',
+  'echo\\s+["\'].*["\']\\s*$',
+  'echo\\s+' + absPathChar + '+\\s*$',
+  'cat\\s*<<\\s*-?\\s*[\'"]?\\w+[\'"]?',
+  'cat\\s*>\\s*["\']?/tmp/' + subPath + '+["\']?\\s*<<\\s*-?\\s*[\'"]?\\w+[\'"]?',
+  'cat\\s+["\']?/tmp/' + subPath + '+["\']?\\s*$',
+  cdPrefix + 'rm\\s+-f\\s+["\']?\\/tmp\\/[\\w.-]+["\']?\\s*$',
+  // Clear regenerable build/test artifact dirs (see `regenArtifacts`). Accepts one OR MORE
+  // targets, each a `[./][web/]<artifact>[/<subpath>]` (see `rmTarget`); end-anchored so EVERY
+  // target must validate. Cannot match `web`, `web/src`, `../` traversal, a non-artifact
+  // target, or a chained command — one bad target disqualifies the whole command.
+  cdPrefix + 'rm\\s+-[rf]+(?:\\s+' + rmTarget + ')+\\s*$',
+  '(?:test\\s+-[defrsxw]|\\[\\s+-[defrsxw])\\s+' + pathTok + '(?:\\s+-[oa]\\s+-[defrsxw]\\s+' + pathTok + ')*\\s*\\]?\\s*$',
+  'true\\s*$',
+  'false\\s*$',
+  cdPrefix + 'sleep\\s+\\d+\\s*$',
+  cdPrefix + 'jobs(?:\\s+-[\\w]+)*\\s*$',
+
+  // --- curl (localhost/127.0.0.1 only; URL must be the last token) ---
+  cdPrefix + 'curl(?:' + curlFlag + ')*\\s+["\']?https?://(?:localhost|127\\.0\\.0\\.1)(?::\\d+)?(?:/[\\w./?&=%+-]*)?["\']?\\s*$',
+
+  // --- Windows: open file in default app (safe directories only) ---
+  'start\\s+""\\s+' + winPathSp + safeDirs + '[/\\\\]' + subPath + '+["\']?\\s*$',
+
+  // --- Claude CLI subprocess (non-interactive -p mode only) ---
+  cdEnvPrefix + 'claude\\s+(?:(?:--model|--max-turns|--output-format|--allowedTools|--verbose)\\s+[\\w.,-]+\\s+)*(?:-p|--print)\\s+[\\s\\S]+$',
+];
+
+// =============================================================================
+// CONFIG-CONDITIONAL PATTERNS
+// =============================================================================
+
+if (prefs?.git?.autoApproveCommit === true) {
+  allowPatterns.push(
+    cdPrefix + gitCmd + 'commit(?:\\s+(?:-[av]|--allow-empty))*\\s+(?:-m|--message)\\s+[\\s\\S]+$'
+  );
+}
+
+if (prefs?.git?.autoApprovePush === true) {
+  allowPatterns.push(
+    cdPrefix + gitCmd + 'push(?:\\s+(?:-u|--set-upstream|--tags|[\\w./-]+))*\\s*$'
+  );
+}
+
+// --- Dynamic safe paths (e.g. prototype repo specified during INTAKE) ---
+if (prefs?.safePaths?.prototypeRepo) {
+  const rawPath = String(prefs.safePaths.prototypeRepo);
+  // Escape regex special chars (including backslash), then normalize path separators
+  const escapedPath = rawPath
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/[\\/]+/g, '[/\\\\]');
+
+  // Read-only commands against the prototype repo (no trailing catch-all)
+  const protoReadCmds = [
+    'cat', 'type', 'head', 'tail', 'less', 'more',
+    'wc', 'ls', 'dir',
+  ];
+  const flagsOpt = '(?:\\s+[-+]?[\\w-]+)*';
+  const protoPath = escapedPath + '[/\\\\]?' + subPath + '*';
+  const protoPathQ = escapedPath + '[/\\\\]?' + subPathQ + '*';
+  for (const cmd of protoReadCmds) {
+    allowPatterns.push(
+      cdPrefix + cmd + flagsOpt + '\\s+["\']?' + protoPath + '["\']?\\s*$'
+    );
+    allowPatterns.push(
+      cdPrefix + cmd + flagsOpt + '\\s+["\'][\\w./:~\\\\ ()-]*' + protoPathQ + '["\']\\s*$'
+    );
+  }
+  // diff: requires both paths to be in the prototype repo (mirrors static diff pattern)
+  allowPatterns.push(
+    cdPrefix + 'diff' + flagsOpt + '\\s+["\']?' + protoPath + '["\']?\\s+["\']?' + protoPath + '["\']?\\s*$'
+  );
+  // find: read-only flags only (mirrors static find pattern — no -exec, -execdir, -delete, -ok)
+  allowPatterns.push(
+    cdPrefix + 'find\\s+["\']?' + protoPath + '["\']?(?:\\s+(?:-(?:name|iname|type|maxdepth|mindepth|path)\\s+["\']?[\\w.*?/\\\\:-]+["\']?|-(?:empty|print0?)|!|-not|-o|\\\\[()]?))*\\s*$'
+  );
+  // grep: needs a pattern argument before the path
+  const grepPatternArg = '(?:\\s+' + grepTerm + ')';
+  allowPatterns.push(
+    cdPrefix + 'grep' + flagsOpt + grepPatternArg + '\\s+["\']?' + protoPath + '["\']?\\s*$'
+  );
+  allowPatterns.push(
+    cdPrefix + 'grep' + flagsOpt + grepPatternArg + '\\s+["\'][\\w./:~\\\\ ()-]*' + protoPathQ + '["\']\\s*$'
+  );
+  // node import scripts reading from the prototype repo
+  allowPatterns.push(
+    cdEnvPrefix + 'node\\s+' + winPath + '\\.claude[/\\\\]scripts[/\\\\]' + subPath + '+["\']?\\s+.*' + escapedPath + '.*$'
+  );
+}
+
+// Anchor all patterns to start
+const anchoredAllowPatterns = allowPatterns.map(p => new RegExp('^' + p, 'i'));
+
+// Check if command matches any allow pattern
+for (const re of anchoredAllowPatterns) {
+  if (re.test(command)) {
+    writeAllowAndExit('Auto-approved: matches safe command pattern');
+  }
+}
+
+// =============================================================================
+// PIPELINE SPLITTING
+// =============================================================================
+
+function testPipelineAllowed(cmdText) {
+  const segments = splitPipeline(cmdText);
+  if (!segments) return false;
+
+  for (let seg of segments) {
+    seg = stripTrailingSuffix(seg);
+
+    for (const pattern of alwaysDenyPatterns) {
+      if (iMatch(seg, pattern)) {
+        denyAndExit('Blocked by security policy: Pipe segment attempts to read a credential-like file');
+      }
+    }
+
+    const segIsSafeDir = isSafeDirCommand(seg);
+    for (const pattern of denyPatterns) {
+      if (iMatch(seg, pattern)) {
+        if (segIsSafeDir) return false;
+        denyAndExit('Blocked by security policy: Pipe segment matches deny pattern');
+      }
+    }
+
+    let segAllowed = false;
+    for (const re of anchoredAllowPatterns) {
+      if (re.test(seg)) {
+        segAllowed = true;
+        break;
+      }
+    }
+    if (!segAllowed) {
+      // A pipeline segment can itself be a parenthesized subshell, e.g.
+      //   (cd web && npx tsc --noEmit) 2>&1 | tail -5
+      // The trailing redirect is stripped above; if what remains is fully
+      // parenthesized, verify every inner sub-command is independently safe
+      // (deny patterns still apply, via testSubCommandAllowed). splitCompoundCommand
+      // returns null for a single inner command, so fall back to [inner].
+      const parenMatch = /^\s*\((.+)\)\s*$/.exec(seg);
+      if (!parenMatch) return false;
+      const inner = parenMatch[1].trim();
+      for (const ic of splitCompoundCommand(inner) || [inner]) {
+        if (!testSubCommandAllowed(ic)) return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+if (testPipelineAllowed(command)) {
+  writeAllowAndExit('Auto-approved: all pipeline segments match safe patterns');
+}
+
+// =============================================================================
+// COMPOUND COMMAND SPLITTING
+// =============================================================================
+
+function testSubCommandAllowed(subCmd) {
+  subCmd = stripTrailingSuffix(subCmd);
+
+  // Bash comments are no-ops
+  if (/^\s*#/.test(subCmd)) return true;
+
+  for (const pattern of alwaysDenyPatterns) {
+    if (iMatch(subCmd, pattern)) {
+      denyAndExit('Blocked by security policy: Sub-command attempts to read a credential-like file');
+    }
+  }
+
+  const subCmdIsSafeDir = isSafeDirCommand(subCmd);
+  for (const pattern of denyPatterns) {
+    if (iMatch(subCmd, pattern)) {
+      if (subCmdIsSafeDir) return false;
+      denyAndExit('Blocked by security policy: Sub-command matches deny pattern');
+    }
+  }
+
+  for (const re of anchoredAllowPatterns) {
+    if (re.test(subCmd)) return true;
+  }
+
+  if (testPipelineAllowed(subCmd)) return true;
+
+  // If wrapped in parentheses, strip and recursively check
+  let stripped = subCmd;
+  let parenMatch;
+  while ((parenMatch = /^\s*\((.+)\)\s*$/.exec(stripped))) {
+    stripped = parenMatch[1].trim();
+  }
+  if (stripped !== subCmd) {
+    const innerCommands = splitCompoundCommand(stripped);
+    if (innerCommands && innerCommands.length > 1) {
+      for (const inner of innerCommands) {
+        if (!testSubCommandAllowed(inner)) return false;
+      }
+      return true;
+    }
+    for (const re of anchoredAllowPatterns) {
+      if (re.test(stripped)) return true;
+    }
+  }
+
+  return false;
+}
+
+const subCommands = splitCompoundCommand(command);
+
+if (subCommands && subCommands.length > 1) {
+  let allAllowed = true;
+  for (const sub of subCommands) {
+    if (!testSubCommandAllowed(sub)) {
+      allAllowed = false;
+      break;
+    }
+  }
+  if (allAllowed) {
+    writeAllowAndExit('Auto-approved: all sub-commands match safe patterns');
+  }
+}
+
+// Third pass: parenthesized commands
+if (/^\s*\(/.test(command)) {
+  if (testSubCommandAllowed(command)) {
+    writeAllowAndExit('Auto-approved: parenthesized command contains safe sub-commands');
+  }
+}
+
+// No match - fall through
+process.exit(0);
