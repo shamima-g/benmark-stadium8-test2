@@ -1,0 +1,44 @@
+{
+  "stories": [
+    {
+      "epic": 1,
+      "story": 1,
+      "title": "BFF session proxy and auth foundation",
+      "complexity": "L",
+      "estimateMin": 45,
+      "driver": "Net-new BFF proxy route handlers + session provider + typed auth module; cookie relay and credential/connectivity error typing, no existing pattern to reuse — the shared surface the rest of the epic depends on."
+    },
+    {
+      "epic": 1,
+      "story": 2,
+      "title": "Login screen with credential and connectivity error states",
+      "complexity": "M",
+      "estimateMin": 30,
+      "driver": "Single form from existing Shadcn primitives, but two distinct error states (401 vs connectivity+retry), keyboard/a11y wiring, and a spec gap (lockout) to resolve."
+    },
+    {
+      "epic": 1,
+      "story": 3,
+      "title": "Role-based landing routing and route protection",
+      "complexity": "M",
+      "estimateMin": 35,
+      "driver": "Creates the (app) protected route group every later page nests under; role-to-landing mapping, redirect-when-signed-out, and in-page permission-denied banner — routable with 3 Playwright ACs."
+    },
+    {
+      "epic": 1,
+      "story": 4,
+      "title": "Application shell with role-gated navigation and sign-out",
+      "complexity": "M",
+      "estimateMin": 35,
+      "driver": "Persistent nav with role-gated visibility, identity display, sign-out + back-button invalidation, responsive collapse, and a11y — broad surface but composed from primitives."
+    },
+    {
+      "epic": 1,
+      "story": 5,
+      "title": "Session lifecycle — idle warning and timeout handling",
+      "complexity": "M",
+      "estimateMin": 30,
+      "driver": "Idle/absolute timers, 60s countdown warning, 401-driven sign-out; client-side only (spec gap, no refresh endpoint) and timer-based tests are fiddly."
+    }
+  ]
+}
