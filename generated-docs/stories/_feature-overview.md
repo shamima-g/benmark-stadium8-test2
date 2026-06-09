@@ -1,34 +1,28 @@
 # Feature Overview — Transaction Import & Approval System
 
-Approved epic breakdown (6 epics). Dependency-ordered.
+Approved epic breakdown (4 epics). Strictly linear dependency chain (1 → 2 → 3 → 4).
 
 | # | Epic | Depends on | Requirements |
 |---|------|-----------|--------------|
-| 1 | Authentication & Application Shell | — | R1, R2, NFR1, NFR3, NFR4, NFR5, NFR6, NFR8 |
-| 2 | File Logs Dashboard | 1 | R5, R8, R16, R17, R18, BR11 |
-| 3 | Transactions Table, Filtering & Export | 1 | R6, R7, R11, R16, R17, R18, BR6, BR9, BR11 |
-| 4 | Transaction Review (Approve & Reject) | 3 | R9, R10, BR1, BR2, BR3, BR8, BR9 |
-| 5 | File Upload | 2 | R3, R4, BR10 |
-| 6 | File Detail, Summary & Lifecycle | 2, 5 | R12, R13, R14, R15, BR4, BR5, BR7, BR10 |
+| 1 | Authentication & Application Shell | — | R1, R2, NFR1–NFR8 |
+| 2 | File Management — Dashboard, Upload & File Lifecycle | 1 | R3, R4, R5, R8, R12, R13, R14, R15, R16, R17, R18, BR4, BR5, BR7, BR10, BR11 |
+| 3 | Transactions Table, Filtering & Export | 1, 2 | R6, R7, R11, R16, R17, R18, BR6, BR9, BR11 |
+| 4 | Transaction Review — Approve & Reject | 1, 2, 3 | R9, R10, BR1, BR2, BR3, BR8, BR9 |
 
 ## Epic 1 — Authentication & Application Shell
-BFF session-cookie sign-in, role-aware landing routing (Importer → Dashboard, Approver → Transactions), the authenticated app shell/navigation, and session lifecycle (idle warning, timeout, lockout).
+BFF session-cookie login with credential-vs-connectivity error states, role-based landing routing (Importer → Dashboard, Approver → Transactions), and the app-wide shell (nav, role-gated visibility, session lifecycle, privacy-policy link) carrying the cross-cutting accessibility, responsive, error-UX, and session NFRs.
 
-## Epic 2 — File Logs Dashboard
-The File Logs landing table (File Name, Process Date, Record Count, File Status) with pagination, single-column sort, filtering (status, file name, process-date range), active filter chips with Clear-all, and zero-data vs zero-results empty states. Rows drill through to a file's transactions.
+## Epic 2 — File Management — Dashboard, Upload & File Lifecycle
+The File Logs dashboard (paginated, sortable, filterable table with status badges and drill-through), Importer file upload (drag-and-drop / picker, progress, success/failure), and per-file detail with the status-count summary, validation-error view, retry-validation, and cancel-file lifecycle actions — all role-gated to Importer where required.
 
 ## Epic 3 — Transactions Table, Filtering & Export
-The Transactions table with all specified columns, status badges, pagination, single-column sort, the full filter set (status, file, date range, amount range, free-text search), active filter chips with Clear-all, empty states, and CSV export of exactly the filtered set (Approver-only, disabled when zero rows match).
+The top-level Transactions table (paginated, sortable, all specified columns) with the full filter set (status, file, date range, amount range, free-text on reference/account), active filter chips with clear-all, distinct empty/no-results states, read-only mode for Importers, and Approver CSV export of exactly the filtered set.
 
-## Epic 4 — Transaction Review (Approve & Reject)
-Approver-only Approve and Reject row actions on Imported transactions, each behind a confirmation modal naming the reference; mandatory Rejection Note with on-blur/on-submit validation; immediate status flip with toast; terminal-state banners and hidden actions on non-Imported rows; read-only Rejection Note display; audit capture of acting user and timestamp.
+## Epic 4 — Transaction Review — Approve & Reject
+Approver-only approve and reject actions on Imported transactions — confirmation modal naming the reference (destructive styling, default focus on Cancel), mandatory rejection note with on-blur/on-submit validation, immediate status transition with toast, terminal-state action hiding with a top-of-page banner, and read-only display of rejection notes on rejected records.
 
-## Epic 5 — File Upload
-Importer-only transaction-file upload via drag-and-drop or file picker, capturing the file setting and file name; upload progress and explicit success/failure feedback; creation of a File Log entry that surfaces on the Dashboard.
-
-## Epic 6 — File Detail, Summary & Lifecycle
-The per-file detail view with a Summary panel (Total/Imported/Approved/Rejected counts that link to filtered transaction slices), validation-errors view and Importer-only Retry on Failed files, Importer-only Cancel File (blocked when any transaction is Approved), and not-yet-final banners for Processing/Uploaded files.
-
-## Cross-cutting / not standalone epics
-- NFR1 (a11y), NFR2 (perf), NFR3 (responsive), NFR4 (browsers), NFR5 (error UX), NFR8 (Playwright-mock layer) — build constraints applied across all UI epics; anchored on Epic 1.
-- NFR7 (availability/RTO/RPO) — operational target with no frontend surface; no stories.
+## Cross-cutting / notes
+- NFR1–NFR6, NFR8 are cross-cutting build constraints anchored on Epic 1 and re-applied per epic during BUILD. NFR7 (availability/RTO/RPO) is an operational target with no frontend surface — no stories.
+- Shared table requirements (R16, R17, R18, BR11) recur in Epics 2 and 3 (each table instantiates pagination/sort/filter-chips/empty-states). BR9 spans Epic 3 (Importer read-only rendering) and Epic 4 (Approver action gating).
+- Data-divergence caveats from brief §13 (TransactionType `C`/`D` vs `"Debit"`, `CurrentFileName` vs `FileName`, `CurrentStatus` vs `LastExecutedActivityName`, placeholder `"Viewer"` role) resolved at the data layer in Epics 2/3.
+- Transactions API at :10005 not serving routes — Epics 2/3/4 use page-route Playwright mocks (NFR8) until reachable.
