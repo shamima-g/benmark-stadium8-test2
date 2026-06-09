@@ -1,7 +1,9 @@
 // Learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom/vitest';
 
-// Accessibility testing with axe-core
+// Accessibility testing with axe-core. The matchers are registered at runtime
+// via expect.extend; their TypeScript types are augmented for Vitest 4 in
+// src/__tests__/vitest-axe.d.ts.
 import * as matchers from 'vitest-axe/matchers';
 import { expect } from 'vitest';
 

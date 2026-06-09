@@ -12,7 +12,15 @@ export default defineConfig({
       'src/**/__tests__/**/*.[jt]s?(x)',
       'src/**/?(*.)+(test).[jt]s?(x)',
     ],
-    exclude: ['node_modules/', '**/*.spec.[jt]s'],
+    exclude: [
+      'node_modules/',
+      '**/*.spec.[jt]s',
+      // Declaration files carry only types — never test suites.
+      '**/*.d.ts',
+      // Shared mock-data / utility modules live under __tests__/helpers and are
+      // imported by test files — they contain no test suites themselves.
+      'src/**/__tests__/helpers/**',
+    ],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{js,jsx,ts,tsx}'],
