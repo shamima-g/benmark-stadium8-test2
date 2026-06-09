@@ -171,6 +171,10 @@ Your only token responsibilities:
 
 Cost is estimated from public per-model rates baked into `token-report.js`; if those rates change, update the price table in that script. Treat the cost as a guide, not a billing figure.
 
+### Per-page report (combined view)
+
+For a single per-**page** (per-wireframe) view that joins all three measures, run `node .claude/scripts/per-page-report.js` — it writes `generated-docs/timing/per-page-report.md` with one row per routable page showing its **estimate**, measured **active build time**, estimate-vs-actual **variance**, and **tokens / cost**; infrastructure-only stories (no page) are listed separately. It reads the JSON summaries the timing/token/estimate scripts write, so run those first or pass `--refresh` to regenerate them in one step. At COMPLETE, `/continue` runs it automatically after the other three reports. Re-runnable anytime for a mid-build snapshot.
+
 ## Policies
 
 - [Authentication Intake](.claude/policies/authentication-intake.md) — auth options are presented explicitly during INTAKE; never inferred or skipped
