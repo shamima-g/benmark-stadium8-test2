@@ -118,9 +118,9 @@ Four phases, 1–2 user gates:
 | Phase | Driven by | Gate(s) | Single artifact / signal |
 |---|---|---|---|
 | **INTAKE** | `/start` | **Gate 1** — approve `project-brief.md` | `generated-docs/specs/project-brief.md` |
-| **PLAN** | `/continue` | **Gate 2a** — approve epic list, **Gate 2b** — approve stories per epic (multi-epic) / **Combined Gate 2** (single-epic) | `_feature-overview.md` + per-epic overviews |
+| **PLAN** | `/continue` | **Gate 2a** — approve epic list, **Gate 2b** — approve stories per epic (multi-epic) / **Combined Gate 2** (single-epic) | `_feature-overview.md` + per-epic overviews; per-story build-time estimates → `timing/build-estimates.md` |
 | **BUILD** | `/continue` | None — autonomous per-story loop, halts only on always-halt categories | Per-story commits |
-| **COMPLETE** | `/continue` | None | Final summary |
+| **COMPLETE** | `/continue` | None | Final summary; `timing/timing-report.md` (actuals) + `timing/build-estimates.md` (estimate-vs-actual) + `timing/token-report.md` (token spend + est. cost) |
 
 **Single-epic short-circuit:** when `feature-planner` returns `epicCount === 1`, Gates 2a and 2b collapse into one combined approval.
 

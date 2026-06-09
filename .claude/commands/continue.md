@@ -231,22 +231,37 @@ Then `AskUserQuestion`:
 
 1. Persist stories to `workflow-state.json` under the epic's `stories` map — an object keyed by story number (`"1"`, `"2"`, …), each entry including **all** returned fields (`title`, `slug`, `summary`, `plainSummary`, `requirementIds`, `roles`, `route`, `targetFile`, `pageAction`, `isInfrastructureOnly`, `acceptanceCriteria` (array of `{ id, text, coverage }`), `manualTestChecklist`, `specGaps`). Persist epic-level `epicIntroducesSharedSurface`, `infrastructureReuseNotes`, and `prototypeSrcRoutes` on the epic itself (the developer reads the latter two in Step B3). Initialize epic-level `manualTestStatus: "pending"` if not already set.
 2. Write per-epic stories file to `generated-docs/stories/epic-<N>-<slug>/_epic-overview.md` for visibility (story metadata only; not full file-per-story)
-3. Update phase totals + transition:
+3. **Author build-time estimates for this epic's stories.** Now — with full story metadata in hand — is the one moment you can estimate well. For each story, judge a **complexity** (`S`/`M`/`L`) and an **estimated active build time in minutes** from the signals you just approved: number and shape of acceptance criteria, whether it's routable vs `isInfrastructureOnly`, new API integration or spec gaps, whether the epic introduces shared surface (`epicIntroducesSharedSurface`), and reuse notes. Write one driving-factor sentence per story. With the **Write** tool, create `generated-docs/timing/.estimates-append.json`:
+
+   ```json
+   { "epic": <N>, "stories": [
+     { "story": 1, "title": "<story title>", "complexity": "M", "estimateMin": 30, "driver": "<one line on what drives it>" }
+   ] }
+   ```
+
+   then run (do **not** use `node -e` — it isn't auto-approved and will prompt):
+
+   ```bash
+   node .claude/scripts/build-estimates.js upsert --file generated-docs/timing/.estimates-append.json --consume
+   ```
+
+   This merges the rows into `build-estimates.json` and re-renders `build-estimates.md`. Re-running for the same story on a plan revision overwrites its estimate cleanly. These are predictions only — they don't gate anything; actuals are reconciled at COMPLETE.
+4. Update phase totals + transition:
 
 ```bash
 node .claude/scripts/transition-phase.js --epic N --set-totals stories M
 node .claude/scripts/transition-phase.js --epic N --story 1 --to BUILD --verify-output
 ```
 
-4. Commit:
+5. Commit:
 
 ```bash
-git add generated-docs/stories/epic-N-*/ generated-docs/context/workflow-state.json .claude/logs/
+git add generated-docs/stories/epic-N-*/ generated-docs/timing/build-estimates.json generated-docs/timing/build-estimates.md generated-docs/context/workflow-state.json .claude/logs/
 git commit -m "docs(plan): stories for epic [N] — [name]"
 git push origin HEAD
 ```
 
-5. Proceed to BUILD phase.
+6. Proceed to BUILD phase.
 
 ---
 
@@ -560,14 +575,19 @@ After the manual-test gate resolves (passed / skipped / legacy), check if more e
 
 There are two entry paths here:
 
-1. **Just finished the last epic** — Step B7.2 transitioned to COMPLETE and `featureComplete` isn't yet `true`. Mark it, emit the congratulations one-liner, and stop:
+1. **Just finished the last epic** — Step B7.2 transitioned to COMPLETE and `featureComplete` isn't yet `true`. Generate the build-timing report, mark the feature complete, emit the congratulations one-liner (with the active-build-time total), and stop:
 
    ```bash
+   node .claude/scripts/timing-report.js
+   node .claude/scripts/token-report.js
+   node .claude/scripts/build-estimates.js render
    node .claude/scripts/transition-phase.js --feature-complete --verify-output
    ```
 
+   Run the timing **and** token reports **before** `--feature-complete` (both hooks stop logging once that flag is set). `timing-report.js` writes `generated-docs/timing/timing-report.md`; read the printed total and include it below. `token-report.js` writes `generated-docs/timing/token-report.md`; read its printed total-tokens and estimated-cost line and include them below. `build-estimates.js render` runs **after** the timing report (it joins the actuals `timing-report.js` just wrote into `timing-summary.json`) and reconciles estimate-vs-actual into `generated-docs/timing/build-estimates.md`. If no estimates were ever recorded the render is a harmless no-op — don't treat its error as a failure.
+
    ```
-   [Feature name] is fully implemented and committed. [Total commits] commits across [N] epics.
+   [Feature name] is fully implemented and committed. [Total commits] commits across [N] epics. Active build time: [total from timing report] (manual/wait time excluded). Token spend: [total tokens from token report] (~[estimated cost]). Full breakdowns in generated-docs/timing/timing-report.md, generated-docs/timing/token-report.md, and estimate-vs-actual in generated-docs/timing/build-estimates.md.
    ```
 
    Stop here. `/continue` re-entered later picks up Path 2 below.

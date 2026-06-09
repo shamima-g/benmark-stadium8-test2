@@ -147,6 +147,30 @@ Use `Read` / `Grep` / `Glob` / `Edit` / `Write` for file content — never `cat`
 
 Tests verify **user-observable behavior**, not implementation. Conventions, the Vitest/Playwright/manual split, anti-patterns, budgets, and `test.fixme()` policy live in [.claude/policies/testing-policy.md](.claude/policies/testing-policy.md) — the single source of truth.
 
+### 13. Build Timing Is Tracked Automatically
+
+Active work time per phase is recorded automatically — you don't stamp timestamps by hand. The `timing-tracker.ps1` hook writes a `resume` event on every prompt and a `yield` event when you go idle to `generated-docs/timing/build-timing.jsonl`, tagged with the current phase/epic/story from `workflow-state.json`. Active work = `resume`→`yield` spans; the `yield`→`resume` gaps (user decisions, manual verification, breaks, `/clear` gaps, time between sessions) are **excluded**. The log is append-only and survives `/clear` and pauses.
+
+Your only timing responsibilities:
+
+- **Never delete or edit** `generated-docs/timing/build-timing.jsonl`. It is the source of truth.
+- **At COMPLETE**, run `node .claude/scripts/timing-report.js` to generate `generated-docs/timing/timing-report.md` (macro totals + per-phase + per-story breakdown), and surface the total active build time to the user.
+- The report is re-runnable anytime for a mid-build snapshot.
+
+Estimates are the predicted companion to this measured timing. When each epic's stories are approved, the workflow records a per-story build-time **estimate** (complexity + minutes + a driving-factor note) to `generated-docs/timing/build-estimates.json` and renders `build-estimates.md` via `node .claude/scripts/build-estimates.js`. At COMPLETE, the same script reconciles those estimates against the measured actuals so `build-estimates.md` shows estimate-vs-actual variance per story. You don't author estimates by hand outside the gate — `/continue` drives this; the source of truth is the JSON store.
+
+### 14. Token Usage Is Tracked Automatically
+
+Token spend per phase is recorded automatically — you don't tally tokens by hand. The `token-tracker.ps1` hook runs at the end of every turn and reads the session transcript, recording each Claude response's token counts (input, output, cache-write, cache-read) to `generated-docs/timing/token-usage.jsonl`, tagged with the current phase/epic/story and with the agent that spent them (the main loop or a specific subagent like `developer` or `test-generator`). The log is append-only, deduplicated by message id, and survives `/clear` and pauses — the same model as build timing ([§13](#13-build-timing-is-tracked-automatically)).
+
+Your only token responsibilities:
+
+- **Never delete or edit** `generated-docs/timing/token-usage.jsonl`. It is the source of truth.
+- **At COMPLETE**, run `node .claude/scripts/token-report.js` to generate `generated-docs/timing/token-report.md` (macro totals + per-phase + per-epic/story + per-agent, with an estimated cost), and surface the total tokens and estimated cost to the user.
+- The report is re-runnable anytime for a mid-build snapshot.
+
+Cost is estimated from public per-model rates baked into `token-report.js`; if those rates change, update the price table in that script. Treat the cost as a guide, not a billing figure.
+
 ## Policies
 
 - [Authentication Intake](.claude/policies/authentication-intake.md) — auth options are presented explicitly during INTAKE; never inferred or skipped
