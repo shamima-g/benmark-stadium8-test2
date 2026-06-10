@@ -7,7 +7,8 @@
  * each protected route to a human-readable page name so the permission-denied
  * banner can name the missing permission (project-brief §2: "an in-page
  * permission-denied banner naming the missing permission; a generic 403 error
- * page is not used").
+ * page is not used") and so the data-driven shell navigation (Story 4) can label
+ * each granted destination.
  *
  * Role → landing mapping (R1 §7, project-brief §2): the post-login destination
  * is role-specific — an Importer lands on the Dashboard, an Approver on the
@@ -24,21 +25,34 @@ export const DASHBOARD_ROUTE = '/dashboard';
 export const TRANSACTIONS_ROUTE = '/transactions';
 
 /**
+ * File-upload surface (Importer-only per project-brief §2 / BR10). The Upload
+ * page itself is built in Epic 2; this route is registered here only so the
+ * data-driven shell nav (Story 4) renders a human-readable label when an
+ * Importer's granted Pages include it.
+ */
+export const UPLOAD_ROUTE = '/upload';
+
+/**
  * The application root. It carries no content of its own — it resolves the
  * role-specific landing and redirects there — so it is never permission-gated.
  */
 export const ROOT_ROUTE = '/';
 
-/** Human-readable names for protected routes, used by the denial banner. */
+/**
+ * Human-readable names for protected routes, used by the denial banner and the
+ * data-driven shell navigation (Story 4) to label each granted destination.
+ */
 const ROUTE_NAMES: Record<string, string> = {
   [DASHBOARD_ROUTE]: 'Dashboard',
   [TRANSACTIONS_ROUTE]: 'Transactions',
+  [UPLOAD_ROUTE]: 'Upload',
 };
 
 /**
  * The display name for a protected route (e.g. '/dashboard' -> 'Dashboard'),
- * used to name the missing permission in the denial banner. Falls back to the
- * raw route when the route is not in the registry so the banner is never blank.
+ * used to name the missing permission in the denial banner and to label nav
+ * destinations. Falls back to the raw route when the route is not in the
+ * registry so the label is never blank.
  */
 export function routeDisplayName(route: string): string {
   return ROUTE_NAMES[route] ?? route;

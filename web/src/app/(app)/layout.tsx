@@ -1,7 +1,8 @@
 'use client';
 
 /**
- * Protected application shell — the `(app)` route group layout (Epic 1, Story 3).
+ * Protected application shell — the `(app)` route group layout (Epic 1, Story 3
+ * + Story 4).
  *
  * Every authenticated, role-gated surface in the app nests under this group
  * (later epics add /dashboard, /transactions, file detail, etc.). The route
@@ -19,13 +20,19 @@
  *     gated; it only resolves and redirects to the role-specific landing.
  *   - Authorised: render the page.
  *
+ * Story 4: the persistent AppShell (header, role-gated nav, identity, sign-out,
+ * privacy-policy link) wraps every protected surface here, so all `(app)` pages
+ * inherit it. Both authorised page content and the permission-denied banner
+ * render inside the shell, so a signed-in user who hits an unauthorised route
+ * still has working navigation and sign-out rather than a bare banner.
+ *
  * Access is keyed off the user's granted route set (AuthUser.routes, derived
  * from PageRead.Route in the userinfo payload) rather than role names, so it is
  * robust to the §13 caveat that live role names may differ from the spec.
  *
- * The root layout already provides the single <main> landmark; this layout must
- * not introduce a second one (NFR1 / a single main region), so the banner and
- * page content render directly as children of that landmark.
+ * The root layout already provides the single <main> landmark; this layout (and
+ * the AppShell it renders) must not introduce a second one (NFR1 / a single main
+ * region), so the banner and page content render as children of that landmark.
  */
 
 import { useEffect } from 'react';
@@ -33,6 +40,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { useSession } from '@/components/auth/SessionProvider';
 import { PermissionDeniedBanner } from '@/components/auth/PermissionDeniedBanner';
+import { AppShell } from '@/components/shell/AppShell';
 import { ROOT_ROUTE, routeDisplayName } from '@/lib/auth/routes';
 
 const LOGIN_ROUTE = '/login';
@@ -67,9 +75,13 @@ export default function ProtectedAppLayout({
   const grantedRoutes = user.routes ?? [];
   const isAuthorised = isRoot || grantedRoutes.includes(pathname);
 
-  if (!isAuthorised) {
-    return <PermissionDeniedBanner pageName={routeDisplayName(pathname)} />;
-  }
-
-  return <>{children}</>;
+  return (
+    <AppShell>
+      {isAuthorised ? (
+        children
+      ) : (
+        <PermissionDeniedBanner pageName={routeDisplayName(pathname)} />
+      )}
+    </AppShell>
+  );
 }

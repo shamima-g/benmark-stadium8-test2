@@ -30,6 +30,11 @@
  *   - any other non-OK status (5xx) or a thrown network error surfaces as
  *     `kind: 'connectivity'` so the UI can offer a retry affordance rather than
  *     silently swallowing it.
+ *
+ * Sign-out (Story 4): once the logout proxy confirms the server-side session
+ * cookie is cleared, the in-memory user must be cleared too via `clearSession`,
+ * otherwise the protected `(app)` root/landing resolver would re-route the user
+ * back to their role landing the moment sign-out navigates to /login.
  */
 
 import {
@@ -55,6 +60,16 @@ interface SessionContextValue {
   isLoading: boolean;
   /** Re-fetches userinfo — used by retry affordances on connectivity errors. */
   refresh: () => Promise<void>;
+  /**
+   * Clears the in-memory session synchronously — used by sign-out once the
+   * logout proxy has confirmed the server-side cookie is gone. Without this the
+   * provider would still hold the signed-in user in memory after sign-out, and
+   * the protected `(app)` root/landing resolver would re-route the user straight
+   * back to their role landing the instant they navigated to /login. Clearing
+   * `user` (and any stale error) makes the app resolve as unauthenticated so the
+   * hand-off to /login sticks.
+   */
+  clearSession: () => void;
 }
 
 const SessionContext = createContext<SessionContextValue | undefined>(
@@ -152,6 +167,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Synchronous local clear — no network. Sign-out calls this AFTER the logout
+  // proxy has confirmed the cookie is gone, so the app re-resolves as
+  // unauthenticated and the hand-off to /login is not bounced back to a landing.
+  const clearSession = useCallback(() => {
+    setUser(null);
+    setError(null);
+    setIsLoading(false);
+  }, []);
+
   useEffect(() => {
     void loadSession();
   }, [loadSession]);
@@ -161,6 +185,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     error,
     isLoading,
     refresh: loadSession,
+    clearSession,
   };
 
   return (

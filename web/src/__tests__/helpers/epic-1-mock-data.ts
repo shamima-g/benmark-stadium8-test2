@@ -17,8 +17,21 @@
  * `routes` granted-route set (PageRead.Route) the gate keys off.
  */
 
-import type { AuthUser } from '@/types/auth';
+import type { AuthUser, PageRead } from '@/types/auth';
 import { DASHBOARD_ROUTE, TRANSACTIONS_ROUTE } from '@/lib/auth/routes';
+
+/**
+ * A role as carried by the BFF userinfo payload. Mirrors RoleRead from
+ * @/types/auth, including the optional nested `Pages` the session provider reads
+ * to derive the granted-route set (PageRead.Route). Story 1 only needed Name;
+ * Story 4's role-gated nav needs the Pages, so the shape carries them here as
+ * the single source.
+ */
+export interface UserInfoRole {
+  Id: number;
+  Name: string;
+  Pages?: PageRead[];
+}
 
 /**
  * The BFF /v1/auth/userinfo response shape, as documented in auth-api.yaml.
@@ -30,7 +43,7 @@ export interface UserInfoResponse {
   FirstName: string;
   LastName: string;
   RolesString: string;
-  Roles: Array<{ Id: number; Name: string }>;
+  Roles: UserInfoRole[];
 }
 
 /**
@@ -48,6 +61,50 @@ export const createMockUserInfoResponse = (
   Roles: [{ Id: 1, Name: 'Importer' }],
   ...overrides,
 });
+
+/** Pages an Importer role grants — both the Dashboard and Transactions. */
+const IMPORTER_PAGES: PageRead[] = [
+  { Id: 1, Name: 'Dashboard', Route: DASHBOARD_ROUTE },
+  { Id: 2, Name: 'Transactions', Route: TRANSACTIONS_ROUTE },
+];
+
+/** Pages an Approver role grants — Transactions only (no Dashboard). */
+const APPROVER_PAGES: PageRead[] = [
+  { Id: 2, Name: 'Transactions', Route: TRANSACTIONS_ROUTE },
+];
+
+/**
+ * Importer userinfo payload with the role's `Pages` populated, so the session
+ * provider derives the Importer's full granted-route set (Dashboard +
+ * Transactions). Story 4's role-gated nav keys off these routes.
+ */
+export const createMockImporterUserInfo = (
+  overrides: Partial<UserInfoResponse> = {},
+): UserInfoResponse =>
+  createMockUserInfoResponse({
+    Email: 'importer@example.com',
+    FirstName: 'Ingrid',
+    LastName: 'Mporter',
+    RolesString: 'Importer',
+    Roles: [{ Id: 1, Name: 'Importer', Pages: IMPORTER_PAGES }],
+    ...overrides,
+  });
+
+/**
+ * Approver userinfo payload with the role's `Pages` populated. The Approver's
+ * granted set excludes the Dashboard — exercising the role-gated-nav hidden path.
+ */
+export const createMockApproverUserInfo = (
+  overrides: Partial<UserInfoResponse> = {},
+): UserInfoResponse =>
+  createMockUserInfoResponse({
+    Email: 'approver@example.com',
+    FirstName: 'Avery',
+    LastName: 'Prover',
+    RolesString: 'Approver',
+    Roles: [{ Id: 2, Name: 'Approver', Pages: APPROVER_PAGES }],
+    ...overrides,
+  });
 
 /**
  * The granted route set a role grants, mirroring the Pages the BFF userinfo
