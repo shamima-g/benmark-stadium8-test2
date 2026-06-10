@@ -88,3 +88,44 @@ export const HTTPStatus = {
 } as const;
 
 export type HTTPStatusCode = (typeof HTTPStatus)[keyof typeof HTTPStatus];
+
+/**
+ * FileLog — a file-ingestion log entry as the transactions API returns it
+ * (PascalCase), mirroring documentation/transactions-api.yaml
+ * components.schemas.FileLog.
+ *
+ * Field notes the dashboard relies on (project-brief §6 / §13):
+ *   - CurrentFileName carries the file name shown in the "File Name" column
+ *     (the spec uses CurrentFileName, NOT a `FileName` field).
+ *   - RecordCount is typed `string` in the spec (e.g. "1240") — the row mapper
+ *     coerces it to a number for numeric sort/display.
+ *   - CurrentStatus is the resolved status-enum string that drives the status
+ *     badge (§13: CurrentStatus, not the derived LastExecutedActivityName).
+ */
+export interface FileLog {
+  Id: number;
+  ProcessDate: string;
+  SettingId: number;
+  SettingName: string;
+  ProcessInstanceId: string;
+  CurrentFolder: string;
+  CurrentFileName: string;
+  FileHash: string;
+  RecordCount: string;
+  Direction: string;
+  CurrentStatus: string;
+  LastExecutedActivityName: string;
+  ProcessDefinitionId: string;
+  ProcessName: string;
+  IsActive: boolean;
+  BulkErrorFile: string;
+  HasBulkErrorFile: string;
+}
+
+/**
+ * FileLogList — the GET /v1/file-logs?IsActive=Yes envelope
+ * ({ FileLog: FileLog[] }), mirroring components.schemas.FileLogList.
+ */
+export interface FileLogList {
+  FileLog: FileLog[];
+}

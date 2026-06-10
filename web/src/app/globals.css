@@ -42,6 +42,20 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Status badge semantic tokens (project-brief §11 status colour mapping).
+     Each status family pairs a surface colour with a readable foreground so the
+     badge meets the WCAG contrast baseline (NFR1); colour is never used alone —
+     the badge always carries a text label alongside it. Components reference
+     these via bg-status-* / text-status-*-foreground utilities, never hex. */
+  --color-status-success: var(--status-success);
+  --color-status-success-foreground: var(--status-success-foreground);
+  --color-status-error: var(--status-error);
+  --color-status-error-foreground: var(--status-error-foreground);
+  --color-status-info: var(--status-info);
+  --color-status-info-foreground: var(--status-info-foreground);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-foreground: var(--status-neutral-foreground);
 }
 
 :root {
@@ -77,6 +91,18 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Status badge surfaces — raw hex per project-brief §11 (Success #15803D,
+     Error #B91C1C, Info #0369A1, Neutral slate). Each pairs with a light
+     foreground for legible, accessible contrast on the filled badge. */
+  --status-success: #15803d;
+  --status-success-foreground: #ffffff;
+  --status-error: #b91c1c;
+  --status-error-foreground: #ffffff;
+  --status-info: #0369a1;
+  --status-info-foreground: #ffffff;
+  --status-neutral: #e2e8f0;
+  --status-neutral-foreground: #334155;
 }
 
 .dark {
@@ -111,6 +137,17 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Status badge surfaces (dark): brighter hues keep the filled badge legible
+     on the dark surface while preserving the §11 semantic colour families. */
+  --status-success: #22c55e;
+  --status-success-foreground: #052e16;
+  --status-error: #f87171;
+  --status-error-foreground: #450a0a;
+  --status-info: #38bdf8;
+  --status-info-foreground: #082f49;
+  --status-neutral: #334155;
+  --status-neutral-foreground: #e2e8f0;
 }
 
 @layer base {

@@ -18,7 +18,11 @@
  */
 
 import type { AuthUser, PageRead } from '@/types/auth';
-import { DASHBOARD_ROUTE, TRANSACTIONS_ROUTE } from '@/lib/auth/routes';
+import {
+  DASHBOARD_ROUTE,
+  TRANSACTIONS_ROUTE,
+  UPLOAD_ROUTE,
+} from '@/lib/auth/routes';
 
 /**
  * A role as carried by the BFF userinfo payload. Mirrors RoleRead from
@@ -62,10 +66,17 @@ export const createMockUserInfoResponse = (
   ...overrides,
 });
 
-/** Pages an Importer role grants — both the Dashboard and Transactions. */
+/**
+ * Pages an Importer role grants — the Dashboard, Transactions, and the
+ * Importer-only Upload surface (project-brief §2 / BR10). Upload is included so
+ * the granted-route set is the single source of truth for the Importer-only
+ * Upload CTA (the Epic-2 dashboard gates that CTA off /upload being granted),
+ * matching the Playwright userinfo fixture and the BFF Pages contract.
+ */
 const IMPORTER_PAGES: PageRead[] = [
   { Id: 1, Name: 'Dashboard', Route: DASHBOARD_ROUTE },
   { Id: 2, Name: 'Transactions', Route: TRANSACTIONS_ROUTE },
+  { Id: 3, Name: 'Upload', Route: UPLOAD_ROUTE },
 ];
 
 /** Pages an Approver role grants — Transactions only (no Dashboard). */
@@ -76,7 +87,7 @@ const APPROVER_PAGES: PageRead[] = [
 /**
  * Importer userinfo payload with the role's `Pages` populated, so the session
  * provider derives the Importer's full granted-route set (Dashboard +
- * Transactions). Story 4's role-gated nav keys off these routes.
+ * Transactions + Upload). Story 4's role-gated nav keys off these routes.
  */
 export const createMockImporterUserInfo = (
   overrides: Partial<UserInfoResponse> = {},
@@ -109,13 +120,15 @@ export const createMockApproverUserInfo = (
 /**
  * The granted route set a role grants, mirroring the Pages the BFF userinfo
  * payload returns per persona (see the Story 3 Playwright fixtures):
- *   - Importer can reach both the Dashboard and Transactions surfaces.
+ *   - Importer can reach the Dashboard, Transactions, and the Importer-only
+ *     Upload surface (project-brief §2 / BR10) — so the granted-route set is the
+ *     single source of truth for the Upload CTA.
  *   - Approver can reach only Transactions (the Dashboard is Importer-only,
  *     which is what exercises the permission-denied path).
  * Unrecognised roles (e.g. the §13 placeholder 'Viewer') grant no routes.
  */
 const ROUTES_BY_ROLE: Record<string, string[]> = {
-  Importer: [DASHBOARD_ROUTE, TRANSACTIONS_ROUTE],
+  Importer: [DASHBOARD_ROUTE, TRANSACTIONS_ROUTE, UPLOAD_ROUTE],
   Approver: [TRANSACTIONS_ROUTE],
 };
 
