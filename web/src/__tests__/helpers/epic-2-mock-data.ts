@@ -123,3 +123,90 @@ export const createMockFileLogList = (
 ): FileLogList => ({
   FileLog: fileLogs,
 });
+
+/**
+ * ---------------------------------------------------------------------------
+ * Story 2 (Upload a Transaction File) fixtures.
+ *
+ * Shapes mirror documentation/transactions-api.yaml
+ * (components.schemas.FileSettingRead / FileSettingReadList) and the
+ * POST /v1/files/upload contract. Per the spec the upload success response is a
+ * DefaultResponse that does NOT carry the newly-created FileLog Id (a documented
+ * spec gap — project-brief §13 / story summary); the success fixture below
+ * models that absence deliberately so the success-feedback unit cannot lean on
+ * an Id the backend never returns.
+ *
+ * The FileSettingRead / FileSettingReadList / DefaultResponse types are imported
+ * from @/types/api (the production shapes — FileSettingRead/FileSettingReadList
+ * are added by this story's developer) so the factories always model exactly
+ * what the upload page consumes.
+ * ---------------------------------------------------------------------------
+ */
+
+import type {
+  DefaultResponse,
+  FileSettingRead,
+  FileSettingReadList,
+} from '@/types/api';
+
+/**
+ * A single FileSetting as GET /v1/file-settings returns it (PascalCase).
+ * Default models an active inbound bank-import setting. Override any field for
+ * variations (inactive settings, alternate names, etc.).
+ */
+export const createMockFileSetting = (
+  overrides: Partial<FileSettingRead> = {},
+): FileSettingRead => ({
+  Id: 1,
+  Name: 'Daily Bank Import',
+  SourceId: 1,
+  SourceName: 'SFTP',
+  TypeId: 1,
+  TypeName: 'CSV',
+  Direction: 'Inbound',
+  StagingSchema: 'staging',
+  StagingTable: 'bank_tx',
+  TargetSchema: 'dbo',
+  TargetTable: 'Transactions',
+  ProcessDefinitionId: 'pd-1',
+  ProcessDefinitionName: 'BankImport',
+  IsActive: true,
+  LastChangedUser: 'System',
+  LastChangedDate: '2026-06-01 09:15:00',
+  ...overrides,
+});
+
+/** A spread of File Settings so the select-options mapping has >1 entry. */
+export const createMockFileSettings = (): FileSettingRead[] => [
+  createMockFileSetting({ Id: 1, Name: 'Daily Bank Import' }),
+  createMockFileSetting({ Id: 2, Name: 'Monthly Reconciliation' }),
+  createMockFileSetting({ Id: 3, Name: 'Ad-hoc Upload' }),
+];
+
+/** The GET /v1/file-settings envelope ({ FileSettings: FileSettingRead[] }). */
+export const createMockFileSettingList = (
+  fileSettings: FileSettingRead[] = createMockFileSettings(),
+): FileSettingReadList => ({
+  FileSettings: fileSettings,
+});
+
+/**
+ * A successful POST /v1/files/upload response. Per the spec the success body is
+ * a DefaultResponse; it carries NO created-FileLog Id (the documented spec gap),
+ * so callers cannot link straight to a specific File Log by Id from this body.
+ * Id is set to 0 here to model "no meaningful Id returned".
+ */
+export const createMockUploadSuccess = (
+  overrides: Partial<DefaultResponse> = {},
+): DefaultResponse => ({
+  Id: 0,
+  MessageType: 'SUCCESS',
+  Messages: ['File uploaded successfully'],
+  ...overrides,
+});
+
+/** A File object usable as the octet-stream upload body in jsdom. */
+export const createMockUploadFile = (
+  name = 'transactions-2026-06-10.csv',
+  content = 'Reference,Amount\nTXN-00001,1500.50\n',
+): File => new File([content], name, { type: 'text/csv' });

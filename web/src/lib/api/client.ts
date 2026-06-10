@@ -126,6 +126,32 @@ function buildUrl(endpoint: string, params?: QueryParams): string {
 }
 
 /**
+ * Returns true for a request body that is already a transport-ready binary /
+ * raw payload (a file upload, a Blob, FormData, etc.) and must therefore be sent
+ * verbatim rather than JSON-encoded. JSON serialization is reserved for plain
+ * data objects.
+ */
+function isRawBody(body: unknown): body is BodyInit {
+  if (body == null) return false;
+  if (typeof body === 'string') return true;
+  if (typeof Blob !== 'undefined' && body instanceof Blob) return true;
+  if (typeof FormData !== 'undefined' && body instanceof FormData) return true;
+  if (
+    typeof ArrayBuffer !== 'undefined' &&
+    (body instanceof ArrayBuffer || ArrayBuffer.isView(body))
+  ) {
+    return true;
+  }
+  if (
+    typeof URLSearchParams !== 'undefined' &&
+    body instanceof URLSearchParams
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Builds request headers
  * Only sets Content-Type when there's a request body
  * Injects auth header from getAuthHeader() when requiresAuth is true and an
@@ -161,7 +187,15 @@ function buildHeaders(
   const shouldSetContentType =
     hasBody || (method && methodsWithBody.includes(method.toUpperCase()));
 
-  if (shouldSetContentType && !baseHeaders['Content-Type']) {
+  // A raw binary body (e.g. a file upload) is left to its caller-supplied
+  // Content-Type (octet-stream) or, for FormData, to the browser's multipart
+  // boundary — we never coerce it to application/json. Only JSON-encoded plain
+  // objects get the application/json default.
+  if (
+    shouldSetContentType &&
+    !baseHeaders['Content-Type'] &&
+    !isRawBody(body)
+  ) {
     baseHeaders['Content-Type'] = 'application/json';
   }
 
@@ -363,8 +397,14 @@ function sanitizeBodyForLogging(body: BodyInit | null): unknown {
     return null;
   }
 
+  // Raw binary bodies (files, blobs, form data) are not JSON and are not
+  // meaningfully loggable — surface a placeholder rather than attempt to parse.
+  if (typeof body !== 'string') {
+    return '[binary body]';
+  }
+
   try {
-    const parsed = JSON.parse(body as string);
+    const parsed = JSON.parse(body);
     const sensitiveFields = [
       'password',
       'token',
@@ -422,6 +462,19 @@ function logResponse(response: Response): void {
 
 interface ClientCallOptions {
   requiresAuth?: boolean;
+  /**
+   * Query-string parameters appended to the endpoint. Used by mutation calls
+   * that carry their inputs in the query string rather than the body — e.g. the
+   * file-upload contract (POST /v1/files/upload?FileSettingId=&FileSettingName=&
+   * FileName=) whose body is the raw octet-stream file.
+   */
+  params?: QueryParams;
+  /**
+   * Explicit request headers, merged over the client defaults. A raw-body call
+   * (e.g. a file upload) sets `Content-Type: application/octet-stream` here so
+   * the client does not coerce the body to JSON.
+   */
+  headers?: HeadersInit;
 }
 
 /**
@@ -441,6 +494,11 @@ export async function get<T>(
 
 /**
  * Convenience method for POST requests
+ *
+ * A plain-object body is JSON-encoded; a raw body (File / Blob / FormData /
+ * ArrayBuffer / string) is sent verbatim so binary uploads keep their bytes and
+ * their caller-supplied Content-Type. `options.params` and `options.headers`
+ * support query-param-carried mutations such as the file-upload contract.
  */
 export async function post<T>(
   endpoint: string,
@@ -450,9 +508,11 @@ export async function post<T>(
 ): Promise<T> {
   return apiClient<T>(endpoint, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: isRawBody(body) ? body : JSON.stringify(body),
     lastChangedUser,
     requiresAuth: options?.requiresAuth,
+    params: options?.params,
+    headers: options?.headers,
   });
 }
 
@@ -467,9 +527,11 @@ export async function put<T>(
 ): Promise<T> {
   return apiClient<T>(endpoint, {
     method: 'PUT',
-    body: JSON.stringify(body),
+    body: isRawBody(body) ? body : JSON.stringify(body),
     lastChangedUser,
     requiresAuth: options?.requiresAuth,
+    params: options?.params,
+    headers: options?.headers,
   });
 }
 

@@ -129,3 +129,42 @@ export interface FileLog {
 export interface FileLogList {
   FileLog: FileLog[];
 }
+
+/**
+ * FileSettingRead — a File Setting as GET /v1/file-settings returns it
+ * (PascalCase), mirroring documentation/transactions-api.yaml
+ * components.schemas.FileSettingRead.
+ *
+ * The upload page (Epic 2, Story 2) reads `Id` and `Name` to populate the File
+ * Setting selector; the chosen setting supplies the FileSettingId /
+ * FileSettingName query params the POST /v1/files/upload contract requires (R3).
+ * The remaining fields are carried for completeness but are not consumed by the
+ * upload flow.
+ */
+export interface FileSettingRead {
+  Id: number;
+  Name: string;
+  SourceId: number;
+  SourceName: string;
+  TypeId: number;
+  TypeName: string;
+  Direction: string;
+  StagingSchema: string;
+  StagingTable: string;
+  TargetSchema: string;
+  TargetTable: string;
+  ProcessDefinitionId: string;
+  ProcessDefinitionName: string;
+  IsActive: boolean;
+  LastChangedUser: string;
+  LastChangedDate: string;
+}
+
+/**
+ * FileSettingReadList — the GET /v1/file-settings envelope
+ * ({ FileSettings: FileSettingRead[] }), mirroring
+ * components.schemas.FileSettingReadList.
+ */
+export interface FileSettingReadList {
+  FileSettings: FileSettingRead[];
+}
