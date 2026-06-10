@@ -39,6 +39,38 @@
       "complexity": "M",
       "estimateMin": 30,
       "driver": "Idle/absolute timers, 60s countdown warning, 401-driven sign-out; client-side only (spec gap, no refresh endpoint) and timer-based tests are fiddly."
+    },
+    {
+      "epic": 2,
+      "story": 1,
+      "title": "File Logs Dashboard",
+      "complexity": "L",
+      "estimateMin": 55,
+      "driver": "Full data table replacing the placeholder — server-fetched list plus client-side sort, 5/10/20/50 pagination, multi-field filter bar with chips + clear-all, two distinct empty states, status badges, and row drill-through (6 ACs)."
+    },
+    {
+      "epic": 2,
+      "story": 2,
+      "title": "Upload a Transaction File",
+      "complexity": "M",
+      "estimateMin": 40,
+      "driver": "Drag-and-drop dropzone + picker fallback, File Setting fetch, octet-stream upload with progress, success/retry, connectivity-vs-validation error split, and Importer-only route gating."
+    },
+    {
+      "epic": 2,
+      "story": 3,
+      "title": "File Detail — Summary & Status-Count Drill-Through",
+      "complexity": "M",
+      "estimateMin": 40,
+      "driver": "New shared /files/[id] page: fetch + client-side status-count summary (Total/Imported/Approved/Rejected), count drill-through links, BR4 work-in-progress banner, loading/not-found states."
+    },
+    {
+      "epic": 2,
+      "story": 4,
+      "title": "File Lifecycle — Validation Errors, Retry & Cancel (Importer)",
+      "complexity": "L",
+      "estimateMin": 50,
+      "driver": "Layers Importer-only mutations onto file detail: dynamic validation-error grid from a JsonArray + column endpoint, retry-validation, destructive cancel-confirm modal, BR7 approved-transaction block (client-side derived), and full role-gating of all three controls."
     }
   ]
 }

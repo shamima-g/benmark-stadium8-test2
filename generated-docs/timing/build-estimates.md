@@ -1,6 +1,6 @@
 # Build Time Estimates
 
-_Generated: 2026-06-09 10:47Z_
+_Generated: 2026-06-10 05:04Z_
 
 Predicted active build time per story, authored at the planning gate.
 Actuals are filled in from `timing-summary.json` once a story is built
@@ -21,11 +21,21 @@ Complexity: **S** small · **M** medium · **L** large.
 | 5 | Session lifecycle — idle warning and timeout handling | M | 30m | — | — | Idle/absolute timers, 60s countdown warning, 401-driven sign-out; client-side only (spec gap, no refresh endpoint) and timer-based tests are fiddly. |
 | **Subtotal** | | | **2h 55m** | **—** | — | |
 
+## Epic 2
+
+| Story | Title | Complexity | Estimate | Actual | Variance | Driver |
+| --- | --- | :---: | --- | --- | --- | --- |
+| 1 | File Logs Dashboard | L | 55m | — | — | Full data table replacing the placeholder — server-fetched list plus client-side sort, 5/10/20/50 pagination, multi-field filter bar with chips + clear-all, two distinct empty states, status badges, and row drill-through (6 ACs). |
+| 2 | Upload a Transaction File | M | 40m | — | — | Drag-and-drop dropzone + picker fallback, File Setting fetch, octet-stream upload with progress, success/retry, connectivity-vs-validation error split, and Importer-only route gating. |
+| 3 | File Detail — Summary & Status-Count Drill-Through | M | 40m | — | — | New shared /files/[id] page: fetch + client-side status-count summary (Total/Imported/Approved/Rejected), count drill-through links, BR4 work-in-progress banner, loading/not-found states. |
+| 4 | File Lifecycle — Validation Errors, Retry & Cancel (Importer) | L | 50m | — | — | Layers Importer-only mutations onto file detail: dynamic validation-error grid from a JsonArray + column endpoint, retry-validation, destructive cancel-confirm modal, BR7 approved-transaction block (client-side derived), and full role-gating of all three controls. |
+| **Subtotal** | | | **3h 5m** | **—** | — | |
+
 ## Total
 
 | | Estimate | Actual | Variance |
 | --- | --- | --- | --- |
-| **All stories** | **2h 55m** | **—** | — |
+| **All stories** | **6h** | **—** | — |
 
 ---
 
