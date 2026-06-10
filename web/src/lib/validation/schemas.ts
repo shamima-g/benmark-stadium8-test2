@@ -45,6 +45,26 @@ export const simplePasswordSchema = z
   .min(8, 'Password must be at least 8 characters');
 
 /**
+ * Login-form schema.
+ *
+ * Intentionally lenient on the password: sign-in only checks that a non-empty
+ * password was supplied — credential strength is enforced server-side, and the
+ * form must never reject a real (possibly legacy) password on the client. The
+ * email is format-validated so an obvious typo is caught before the request
+ * reaches the proxy. Field-level messages are surfaced inline and linked to
+ * their inputs via aria-describedby (NFR1).
+ */
+export const loginSchema = z.object({
+  email: z
+    .string()
+    .min(1, 'Enter your email address')
+    .email('Enter a valid email address'),
+  password: z.string().min(1, 'Enter your password'),
+});
+
+export type LoginFormValues = z.infer<typeof loginSchema>;
+
+/**
  * User ID validation schema
  * Validates MongoDB ObjectId or UUID format
  */
