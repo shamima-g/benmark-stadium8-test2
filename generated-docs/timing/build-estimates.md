@@ -1,6 +1,6 @@
 # Build Time Estimates
 
-_Generated: 2026-06-10 05:04Z_
+_Generated: 2026-06-10 09:06Z_
 
 Predicted active build time per story, authored at the planning gate.
 Actuals are filled in from `timing-summary.json` once a story is built
@@ -31,11 +31,20 @@ Complexity: **S** small · **M** medium · **L** large.
 | 4 | File Lifecycle — Validation Errors, Retry & Cancel (Importer) | L | 50m | — | — | Layers Importer-only mutations onto file detail: dynamic validation-error grid from a JsonArray + column endpoint, retry-validation, destructive cancel-confirm modal, BR7 approved-transaction block (client-side derived), and full role-gating of all three controls. |
 | **Subtotal** | | | **3h 5m** | **—** | — | |
 
+## Epic 3
+
+| Story | Title | Complexity | Estimate | Actual | Variance | Driver |
+| --- | --- | :---: | --- | --- | --- | --- |
+| 1 | Transactions table — columns, sorting, pagination and read-only view | L | 50m | — | — | Replaces the placeholder with the full read-only table — 8 columns, single-column sort, 5/10/20/50 pagination, status badges, and loading/error/zero-data states. Lower than the dashboard because the table/sort/pagination primitives are being reused/generalised from Epic 2 rather than built fresh. |
+| 2 | Filter and search the transactions, with active filter chips and deep-link in | L | 55m | — | — | Five filter types (status, file, date range, amount range, free-text on reference/account) composed with AND, active chips + Clear-all, a zero-filter-results state, and deep-link parsing of ?fileLogId=&status= initial filters — the heaviest story in the epic. |
+| 3 | Approver export of the filtered transactions as CSV | M | 35m | — | — | Approver-only Export control: pure client-side CSV builder (header + escaped rows) over exactly the filtered set, role-gated visibility, disabled-when-empty state, and a filename reflecting active filters + date. |
+| **Subtotal** | | | **2h 20m** | **—** | — | |
+
 ## Total
 
 | | Estimate | Actual | Variance |
 | --- | --- | --- | --- |
-| **All stories** | **6h** | **—** | — |
+| **All stories** | **8h 20m** | **—** | — |
 
 ---
 

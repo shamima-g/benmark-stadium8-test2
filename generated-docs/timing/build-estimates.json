@@ -71,6 +71,30 @@
       "complexity": "L",
       "estimateMin": 50,
       "driver": "Layers Importer-only mutations onto file detail: dynamic validation-error grid from a JsonArray + column endpoint, retry-validation, destructive cancel-confirm modal, BR7 approved-transaction block (client-side derived), and full role-gating of all three controls."
+    },
+    {
+      "epic": 3,
+      "story": 1,
+      "title": "Transactions table — columns, sorting, pagination and read-only view",
+      "complexity": "L",
+      "estimateMin": 50,
+      "driver": "Replaces the placeholder with the full read-only table — 8 columns, single-column sort, 5/10/20/50 pagination, status badges, and loading/error/zero-data states. Lower than the dashboard because the table/sort/pagination primitives are being reused/generalised from Epic 2 rather than built fresh."
+    },
+    {
+      "epic": 3,
+      "story": 2,
+      "title": "Filter and search the transactions, with active filter chips and deep-link in",
+      "complexity": "L",
+      "estimateMin": 55,
+      "driver": "Five filter types (status, file, date range, amount range, free-text on reference/account) composed with AND, active chips + Clear-all, a zero-filter-results state, and deep-link parsing of ?fileLogId=&status= initial filters — the heaviest story in the epic."
+    },
+    {
+      "epic": 3,
+      "story": 3,
+      "title": "Approver export of the filtered transactions as CSV",
+      "complexity": "M",
+      "estimateMin": 35,
+      "driver": "Approver-only Export control: pure client-side CSV builder (header + escaped rows) over exactly the filtered set, role-gated visibility, disabled-when-empty state, and a filename reflecting active filters + date."
     }
   ]
 }
