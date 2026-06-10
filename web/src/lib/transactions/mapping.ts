@@ -29,6 +29,12 @@ export type { StatusBadge, StatusBadgeVariant } from '@/lib/file-logs/mapping';
 export interface TransactionRow {
   /** TransactionRead.Id — stable React key / row identity. */
   id: number;
+  /**
+   * TransactionRead.FileLogId — the owning file's id. Carried so the Epic-3
+   * Story-2 File filter and the ?fileLogId= deep-link can match by file (Story 1
+   * did not need it; the filter set does).
+   */
+  fileLogId: number;
   /** TransactionRead.Reference → the "Reference" column (e.g. TXN-00001). */
   reference: string;
   /** TransactionRead.TransactionDate (ISO-ish string) → "Transaction Date". */
@@ -99,6 +105,7 @@ export function formatAmount(amount: number, currency: string): string {
 export function toTransactionRow(tx: TransactionRead): TransactionRow {
   return {
     id: tx.Id,
+    fileLogId: tx.FileLogId,
     reference: tx.Reference,
     transactionDate: tx.TransactionDate,
     account: tx.AccountNumber,
