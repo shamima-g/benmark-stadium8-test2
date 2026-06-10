@@ -6,48 +6,44 @@
  * (the page owns the indicator + aria-sort). This module is the pure, NON-MUTATING
  * comparator — it returns a new sorted array and leaves the input order intact.
  *
- * Each sortable column orders by its natural value-type, not by stringified value:
+ * The sort/asc-desc/value-kind semantics now live in the shared generic table
+ * core (@/lib/table/sort); this module binds the File Logs column union to a
+ * value accessor + kind and delegates. No behaviour change from the original
+ * per-column comparator:
  *   - fileName    → lexical (locale-aware string compare)
  *   - processDate → chronological (date compare)
  *   - recordCount → numeric (47 < 760 < 3000, not lexical where "3000" < "47")
  */
 
 import type { FileLogRow } from './mapping';
+import { sortRows, type SortValueKind } from '@/lib/table/sort';
+
+/** Sort direction — re-exported from the generic core (preserves the call sites). */
+export type { SortDirection } from '@/lib/table/sort';
 
 /** The columns the File Logs table can sort on. */
 export type FileLogSortColumn = 'fileName' | 'processDate' | 'recordCount';
 
-/** Sort direction — ascending (first click) or descending (second click). */
-export type SortDirection = 'asc' | 'desc';
-
-/** Three-way comparison of two rows on the given column (ascending order). */
-function compareAsc(
-  a: FileLogRow,
-  b: FileLogRow,
-  column: FileLogSortColumn,
-): number {
-  switch (column) {
-    case 'recordCount':
-      return a.recordCount - b.recordCount;
-    case 'processDate':
-      return (
-        new Date(a.processDate).getTime() - new Date(b.processDate).getTime()
-      );
-    case 'fileName':
-      return a.fileName.localeCompare(b.fileName);
-  }
-}
+/** Each sortable column's value accessor + the kind it orders by. */
+const COLUMN_SORT: Record<
+  FileLogSortColumn,
+  { accessor: (row: FileLogRow) => unknown; kind: SortValueKind }
+> = {
+  fileName: { accessor: (row) => row.fileName, kind: 'string' },
+  processDate: { accessor: (row) => row.processDate, kind: 'date' },
+  recordCount: { accessor: (row) => row.recordCount, kind: 'number' },
+};
 
 /**
  * Returns a new array of rows sorted by the given column and direction. Pure: the
  * input array is not mutated (the page relies on this so the unsorted source list
- * remains stable across re-sorts).
+ * remains stable across re-sorts). Delegates to the generic table sort core.
  */
 export function sortFileLogRows(
   rows: FileLogRow[],
   column: FileLogSortColumn,
-  direction: SortDirection,
+  direction: import('@/lib/table/sort').SortDirection,
 ): FileLogRow[] {
-  const sorted = [...rows].sort((a, b) => compareAsc(a, b, column));
-  return direction === 'desc' ? sorted.reverse() : sorted;
+  const { accessor, kind } = COLUMN_SORT[column];
+  return sortRows(rows, accessor, kind, direction);
 }
