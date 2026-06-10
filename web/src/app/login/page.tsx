@@ -18,6 +18,17 @@
  *     -> a DISTINCT inline connectivity message WITH a retry control.
  * Both are rendered in a single role="alert" live region.
  *
+ * Session-ended explanation (Story 5 / NFR5, NFR6): when the user arrives here
+ * from a session timeout, SessionTimeout records the reason in sessionStorage
+ * (SESSION_ENDED_STORAGE_KEY) before handing off to /login. This page reads and
+ * clears that signal on mount and surfaces a clear, accessible "your session
+ * ended" notice so the return to login is explained rather than looking like a
+ * fresh, unexplained sign-out. The signal is carried via sessionStorage (not a
+ * URL query param) so the hand-off route stays exactly `/login`, matching the
+ * single, unadorned login route the route-protection gate and sign-out flow
+ * share. The notice never interferes with the form's credential/connectivity
+ * error states.
+ *
  * POPIA (project-brief §5): the privacy-policy link is shown on this
  * data-collection form.
  *
@@ -32,7 +43,7 @@
  * encode the role mapping itself.
  */
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -49,6 +60,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useOptionalSession } from '@/components/auth/SessionProvider';
 import { loginSchema } from '@/lib/validation/schemas';
+import {
+  SESSION_ENDED_STORAGE_KEY,
+  SESSION_ENDED_TIMEOUT,
+} from '@/lib/auth/session-timing';
 
 /** Same-origin BFF proxy endpoint. Relative path keeps the session cookie. */
 const LOGIN_PROXY_PATH = '/api/auth/login';
@@ -60,6 +75,9 @@ const LOGIN_PROXY_PATH = '/api/auth/login';
  * the role mapping itself.
  */
 const POST_LOGIN_ROUTE = '/';
+
+const SESSION_ENDED_MESSAGE =
+  'Your session ended due to inactivity. Please sign in again to continue.';
 
 /** Per-field validation messages keyed by field name. */
 type FieldErrors = { email?: string; password?: string };
@@ -73,6 +91,28 @@ type SubmitError = { kind: 'credential' | 'connectivity'; message: string };
 const CREDENTIAL_ERROR_MESSAGE = 'Invalid email or password.';
 const CONNECTIVITY_ERROR_MESSAGE =
   'We could not reach the sign-in service. Please check your connection and try again.';
+
+/**
+ * Reads and clears the session-timeout signal SessionTimeout left in
+ * sessionStorage. Returns true exactly once per timeout hand-off, so the notice
+ * does not persist across a manual reload after the user has seen it.
+ */
+function consumeSessionEndedSignal(): boolean {
+  try {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    const reason = window.sessionStorage.getItem(SESSION_ENDED_STORAGE_KEY);
+    if (reason === SESSION_ENDED_TIMEOUT) {
+      window.sessionStorage.removeItem(SESSION_ENDED_STORAGE_KEY);
+      return true;
+    }
+    return false;
+  } catch {
+    // sessionStorage unavailable (private mode / disabled) — no notice to show.
+    return false;
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -88,6 +128,16 @@ export default function LoginPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<SubmitError | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // True when the user arrived here because their session timed out (Story 5).
+  const [sessionEnded, setSessionEnded] = useState(false);
+
+  // Read + clear the timeout signal on mount (client-only). Done in an effect so
+  // it runs after hydration and touches sessionStorage only in the browser.
+  useEffect(() => {
+    if (consumeSessionEndedSignal()) {
+      setSessionEnded(true);
+    }
+  }, []);
 
   // Stable ids so labels/inputs/error nodes are programmatically linked.
   const emailId = useId();
@@ -157,6 +207,8 @@ export default function LoginPage() {
         setSubmitError(error);
         return;
       }
+      // A successful sign-in supersedes any prior session-ended notice.
+      setSessionEnded(false);
       // Success: the proxy set the HttpOnly session cookie server-side. Refresh
       // the session so the SessionProvider loads the new profile (which the
       // (app) root needs to resolve the role-specific landing), then hand off to
@@ -197,6 +249,15 @@ export default function LoginPage() {
 
         <CardContent>
           <form noValidate onSubmit={handleFormSubmit} className="space-y-6">
+            {sessionEnded && !submitError && (
+              <div
+                role="status"
+                className="rounded-md border border-primary/40 bg-accent px-4 py-3 text-sm text-foreground"
+              >
+                <p>{SESSION_ENDED_MESSAGE}</p>
+              </div>
+            )}
+
             {submitError && (
               <div
                 role="alert"

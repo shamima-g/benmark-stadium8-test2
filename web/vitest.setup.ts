@@ -5,9 +5,38 @@ import '@testing-library/jest-dom/vitest';
 // via expect.extend; their TypeScript types are augmented for Vitest 4 in
 // src/__tests__/vitest-axe.d.ts.
 import * as matchers from 'vitest-axe/matchers';
-import { expect } from 'vitest';
+import { expect, vi } from 'vitest';
 
 expect.extend(matchers);
+
+// Testing Library + Vitest fake-timer interop.
+//
+// @testing-library/dom's `waitFor` / `findBy*` only know how to drive a frozen
+// clock forward when they believe Jest fake timers are active: their detection
+// is `typeof jest !== 'undefined' && (setTimeout._isMockFunction || 'clock' in
+// setTimeout)`, and when it returns true they advance the clock with
+// `jest.advanceTimersByTime(interval)`. Under Vitest there is no `jest` global,
+// so the detection short-circuits to false and `waitFor` polls on the (now
+// frozen) real clock — which never ticks, so any `findBy*` after
+// `vi.useFakeTimers()` hangs until the test times out.
+//
+// Vitest's faked `setTimeout` DOES carry a `clock` property, so we only need to
+// supply a minimal `jest`-shaped global exposing `advanceTimersByTime`, routed
+// to Vitest's own timer control. The detection still gates on the `clock`
+// property, so this shim is inert under real timers and changes nothing for the
+// many suites that never call `vi.useFakeTimers()`. This lets fake-timer suites
+// (e.g. the session-lifecycle timers) use `findByRole` / `waitFor` exactly as
+// they would under Jest.
+const globalWithJest = globalThis as typeof globalThis & {
+  jest?: { advanceTimersByTime: (ms: number) => void };
+};
+if (typeof globalWithJest.jest === 'undefined') {
+  globalWithJest.jest = {
+    advanceTimersByTime: (ms: number) => {
+      vi.advanceTimersByTime(ms);
+    },
+  };
+}
 
 // Polyfill for Web APIs needed by Next.js
 // These are required for testing files that import from 'next/server'

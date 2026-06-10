@@ -2,7 +2,7 @@
 
 /**
  * Protected application shell — the `(app)` route group layout (Epic 1, Story 3
- * + Story 4).
+ * + Story 4 + Story 5).
  *
  * Every authenticated, role-gated surface in the app nests under this group
  * (later epics add /dashboard, /transactions, file detail, etc.). The route
@@ -26,6 +26,13 @@
  * render inside the shell, so a signed-in user who hits an unauthorised route
  * still has working navigation and sign-out rather than a bare banner.
  *
+ * Story 5: SessionTimeout is mounted here, inside the shell, so client-side
+ * session-lifecycle enforcement (idle warning + 15-min idle timeout + 8-hour
+ * absolute cap, NFR6; sign-out-to-login on a 401 from a protected call, NFR5) is
+ * active across EVERY protected surface. It is mounted above the authorised /
+ * permission-denied branch so the lifecycle runs regardless of which protected
+ * route the user is on. It only arms its timers for an authenticated session.
+ *
  * Access is keyed off the user's granted route set (AuthUser.routes, derived
  * from PageRead.Route in the userinfo payload) rather than role names, so it is
  * robust to the §13 caveat that live role names may differ from the spec.
@@ -41,6 +48,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useSession } from '@/components/auth/SessionProvider';
 import { PermissionDeniedBanner } from '@/components/auth/PermissionDeniedBanner';
 import { AppShell } from '@/components/shell/AppShell';
+import { SessionTimeout } from '@/components/shell/SessionTimeout';
 import { ROOT_ROUTE, routeDisplayName } from '@/lib/auth/routes';
 
 const LOGIN_ROUTE = '/login';
@@ -77,11 +85,13 @@ export default function ProtectedAppLayout({
 
   return (
     <AppShell>
-      {isAuthorised ? (
-        children
-      ) : (
-        <PermissionDeniedBanner pageName={routeDisplayName(pathname)} />
-      )}
+      <SessionTimeout>
+        {isAuthorised ? (
+          children
+        ) : (
+          <PermissionDeniedBanner pageName={routeDisplayName(pathname)} />
+        )}
+      </SessionTimeout>
     </AppShell>
   );
 }
