@@ -7,8 +7,17 @@
  * /transactions?fileLogId=<id>&status=<Status>. parseTransactionFilterParams
  * reads those exact param names back into the page's initial filter state on
  * first render, present/absent/malformed-safe (a non-numeric fileLogId is
- * dropped, NOT coerced to NaN — a NaN would silently match nothing; an unknown
- * status is dropped; absent params yield an empty filter set; never throws).
+ * dropped, NOT coerced to NaN — a NaN would silently match nothing; a known
+ * status is canonicalised to its documented casing; an absent/blank status
+ * yields no status filter; never throws).
+ *
+ * A status param that is NOT one of the documented vocabulary values is carried
+ * through verbatim (trimmed) rather than dropped: the Status filter is a
+ * client-side exact match (@/lib/transactions/filter), so an out-of-vocabulary
+ * status (e.g. a status that exists upstream but has no current rows) simply
+ * matches nothing — which is the correct, user-observable zero-results outcome
+ * — instead of silently widening the export/table back to the full set. Only an
+ * absent or blank status yields no status filter.
  *
  * activeFilterChips derives one self-describing chip descriptor per active
  * criterion (R18) so the page can render the chip list + Clear-all without
@@ -17,16 +26,23 @@
 
 import type { TransactionFilters } from './filter';
 
-/** The status vocabulary the drill-through can pre-apply (project-brief §11). */
+/** The status vocabulary the drill-through canonicalises casing for (project-brief §11). */
 const KNOWN_STATUSES = ['Imported', 'Approved', 'Rejected'] as const;
 
-/** Resolves a raw status param to its canonical casing, or undefined if unknown. */
-function canonicalStatus(raw: string | null): string | undefined {
+/**
+ * Resolves a raw status param to a filter value: a known status is canonicalised
+ * to its documented casing; any other non-blank value is carried through trimmed
+ * (it will simply match no rows via the exact-match filter); a null/blank value
+ * yields undefined (no status filter).
+ */
+function resolveStatus(raw: string | null): string | undefined {
   if (raw === null) return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return undefined;
   const match = KNOWN_STATUSES.find(
-    (status) => status.toLowerCase() === raw.trim().toLowerCase(),
+    (status) => status.toLowerCase() === trimmed.toLowerCase(),
   );
-  return match;
+  return match ?? trimmed;
 }
 
 /**
@@ -34,8 +50,9 @@ function canonicalStatus(raw: string | null): string | undefined {
  * state. The param names match buildTransactionsHref (`fileLogId`, `status`).
  *   - fileLogId: parsed to a number ONLY when the whole value is a valid integer;
  *     a non-numeric value is dropped (never coerced to NaN).
- *   - status: kept ONLY when it matches a known status (canonicalised casing);
- *     unknown values are dropped.
+ *   - status: a known status is canonicalised; any other non-blank value is kept
+ *     verbatim (matches nothing via the exact-match filter); a blank/absent value
+ *     yields no status filter.
  *   - absent params yield an empty filter set. Never throws.
  */
 export function parseTransactionFilterParams(
@@ -51,7 +68,7 @@ export function parseTransactionFilterParams(
     }
   }
 
-  const status = canonicalStatus(searchParams.get('status'));
+  const status = resolveStatus(searchParams.get('status'));
   if (status !== undefined) {
     filters.status = status;
   }

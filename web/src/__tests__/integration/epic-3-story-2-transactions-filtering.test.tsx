@@ -65,7 +65,9 @@
  *       -> parseTransactionFilterParams(searchParams: URLSearchParams):
  *          TransactionFilters — reads ?fileLogId=&status=, present/absent/
  *          malformed-safe (a non-numeric fileLogId is dropped, not coerced to NaN;
- *          an unknown status is dropped; absent params yield an empty filter set).
+ *          a known status is canonicalised, an out-of-vocabulary status is passed
+ *          through verbatim so it yields a genuine zero-results filter rather than
+ *          silently widening the table; absent params yield an empty filter set).
  *          The param names MUST match buildTransactionsHref (`fileLogId`, `status`).
  *       -> activeFilterChips(filters: TransactionFilters): { key, label }[] — the
  *          chip descriptors the page renders (one chip per active criterion).

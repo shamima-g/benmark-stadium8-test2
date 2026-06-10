@@ -2,7 +2,8 @@
 
 /**
  * Transactions (/transactions) — the read-only Transactions table with client-side
- * filtering & search (Epic 3, Stories 1 & 2).
+ * filtering & search (Epic 3, Stories 1 & 2), plus the Approver-only CSV export
+ * (Epic 3, Story 3).
  *
  * Story 1 built the fetch → sort → paginate pipeline and the table. Story 2 LAYERS
  * R7 filtering onto it without rebuilding the table: a filter bar (Status / File /
@@ -10,7 +11,10 @@
  * active-filter chips with a single Clear-all (R18), a zero-FILTER-results state
  * distinct from the zero-DATA state (BR11), and a deep-link-in that reads
  * ?fileLogId=&status= and pre-applies them as initial filters (the Epic-2
- * file-detail status-count drill-through; AC-4).
+ * file-detail status-count drill-through; AC-4). Story 3 LAYERS an Approver-only
+ * Export control onto the toolbar (R11 / BR6 / BR9): it serialises EXACTLY the
+ * currently-filtered set (the whole set, pre-pagination) to CSV client-side and
+ * triggers a browser download named to reflect the active filters + date.
  *
  * Data (R6 / §4): the full transactions list is fetched once via the shared API
  * client (GET /v1/transactions — no params, the approved spec gap — CLAUDE.md §3).
@@ -23,8 +27,9 @@
  * (§11). Amount is rendered as money (formatAmount) and sorts numerically.
  *
  * READ-ONLY (BR9 / AC-4): this surface renders NO row-level mutating controls for
- * ANY role — no Approve, no Reject, no export. Export is Story 3; mutations are
- * Epic 4. Both Importer and Approver see the same read-only filtered view.
+ * ANY role — no Approve, no Reject (Epic 4). The only Approver-only affordance is
+ * the toolbar Export control; per §2 it is HIDDEN entirely for Importers (not
+ * rendered disabled). Both roles otherwise see the same read-only filtered view.
  *
  * Empty states (BR11): zero-DATA shows "No transactions yet" (no creation prompt —
  * transactions are created by file import in Epic 2). zero-FILTER-results shows a
@@ -37,9 +42,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArrowDownIcon, ArrowUpIcon, XIcon } from 'lucide-react';
+import { ArrowDownIcon, ArrowUpIcon, DownloadIcon, XIcon } from 'lucide-react';
 
 import { getTransactions } from '@/lib/api/transactions';
+import { useSession } from '@/components/auth/SessionProvider';
 import {
   toTransactionRow,
   formatAmount,
@@ -49,6 +55,14 @@ import {
   filterTransactionRows,
   type TransactionFilters,
 } from '@/lib/transactions/filter';
+import {
+  buildTransactionsCsv,
+  buildTransactionsCsvFilename,
+} from '@/lib/transactions/csv';
+import {
+  canExportTransactions,
+  canExportNow,
+} from '@/lib/transactions/exportGating';
 import {
   parseTransactionFilterParams,
   activeFilterChips,
@@ -93,6 +107,10 @@ const COLUMNS: { key: TransactionSortColumn; label: string }[] = [
 /** The selectable status values shown in the Status filter (project-brief §11). */
 const STATUS_FILTER_OPTIONS = ['Imported', 'Approved', 'Rejected'] as const;
 
+/** The explanation shown when Export is disabled because nothing matches (BR6). */
+const EXPORT_DISABLED_REASON =
+  'No transactions to export for the current filter.';
+
 /** Renders a Transaction Date string as a readable calendar date (falls back to raw). */
 function formatTransactionDate(value: string): string {
   const date = new Date(value);
@@ -112,6 +130,25 @@ function toAmountBound(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/**
+ * Triggers a client-side browser download of the given text as a file with the
+ * given name (R11 export mechanism): a text/csv Blob → an object URL → a
+ * temporary anchor carrying the `download` attribute → a synthetic click →
+ * revoke the URL. No API call — the CSV is generated entirely client-side from
+ * the already-loaded, currently-filtered rows (BR6).
+ */
+function downloadCsv(filename: string, csv: string): void {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
 export default function TransactionsPage() {
   // Deep-link-in (AC-4): read ?fileLogId=&status= ONCE and seed the initial
   // filter state. useSearchParams is read on first render; the parsed result
@@ -122,6 +159,11 @@ export default function TransactionsPage() {
       new URLSearchParams(searchParams?.toString() ?? ''),
     ),
   );
+
+  // The authenticated role set drives Export VISIBILITY (Approver-only; BR9 /
+  // §2 — hidden, not disabled, for Importers).
+  const { user } = useSession();
+  const canExport = canExportTransactions(user?.roles ?? []);
 
   const [rows, setRows] = useState<TransactionRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -205,7 +247,9 @@ export default function TransactionsPage() {
     ],
   );
 
-  // Filter → sort over the full list (R7 + R17).
+  // Filter → sort over the full list (R7 + R17). This is the EXACT currently-
+  // filtered set the Export control serialises (BR6) — the whole set, before
+  // pagination, so Export covers every matching row, not just the visible page.
   const filteredRows = useMemo(() => {
     const filtered = filterTransactionRows(rows, filters);
     return sortColumn
@@ -219,6 +263,20 @@ export default function TransactionsPage() {
     () => paginate(filteredRows, currentPage, pageSize),
     [filteredRows, currentPage, pageSize],
   );
+
+  // Export enablement (BR6): only when the filtered set has at least one row.
+  const exportEnabled = canExportNow(filteredRows.length);
+
+  // Builds the CSV from the WHOLE currently-filtered set (pre-pagination) and
+  // triggers a browser download named to reflect the active filters + today's
+  // date. new Date() is called HERE (in the component) and injected into the
+  // pure filename builder so the builder stays deterministic.
+  function handleExport() {
+    if (!exportEnabled) return;
+    const csv = buildTransactionsCsv(filteredRows);
+    const filename = buildTransactionsCsvFilename(filters, new Date());
+    downloadCsv(filename, csv);
+  }
 
   // Active-filter chips + Clear-all (R18). Each chip's remover clears its own
   // criterion; the descriptors (key/label) come from the shared helper so the
@@ -317,49 +375,83 @@ export default function TransactionsPage() {
         </Card>
       )}
 
-      {/* The filter bar + table render whenever data exists (even when a filter
-          narrows it to zero — that zero-filter-results state keeps the chips and
-          Clear-all available, distinct from the no-data state above). */}
+      {/* The filter bar + toolbar + table render whenever data exists (even when a
+          filter narrows it to zero — that zero-filter-results state keeps the
+          chips, Clear-all, and the (disabled) Export control available, distinct
+          from the no-data state above). */}
       {!isLoading && !loadError && rows.length > 0 && (
         <div className="flex flex-col gap-4">
-          <FilterBar
-            statusFilter={statusFilter}
-            onStatusChange={(value) => {
-              setStatusFilter(value);
-              setPage(1);
-            }}
-            fileLogIdFilter={fileLogIdFilter}
-            fileOptions={fileOptions}
-            onFileChange={(value) => {
-              setFileLogIdFilter(value);
-              setPage(1);
-            }}
-            dateFrom={dateFrom}
-            onDateFromChange={(value) => {
-              setDateFrom(value);
-              setPage(1);
-            }}
-            dateTo={dateTo}
-            onDateToChange={(value) => {
-              setDateTo(value);
-              setPage(1);
-            }}
-            amountMin={amountMin}
-            onAmountMinChange={(value) => {
-              setAmountMin(value);
-              setPage(1);
-            }}
-            amountMax={amountMax}
-            onAmountMaxChange={(value) => {
-              setAmountMax(value);
-              setPage(1);
-            }}
-            search={search}
-            onSearchChange={(value) => {
-              setSearch(value);
-              setPage(1);
-            }}
-          />
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex-1">
+              <FilterBar
+                statusFilter={statusFilter}
+                onStatusChange={(value) => {
+                  setStatusFilter(value);
+                  setPage(1);
+                }}
+                fileLogIdFilter={fileLogIdFilter}
+                fileOptions={fileOptions}
+                onFileChange={(value) => {
+                  setFileLogIdFilter(value);
+                  setPage(1);
+                }}
+                dateFrom={dateFrom}
+                onDateFromChange={(value) => {
+                  setDateFrom(value);
+                  setPage(1);
+                }}
+                dateTo={dateTo}
+                onDateToChange={(value) => {
+                  setDateTo(value);
+                  setPage(1);
+                }}
+                amountMin={amountMin}
+                onAmountMinChange={(value) => {
+                  setAmountMin(value);
+                  setPage(1);
+                }}
+                amountMax={amountMax}
+                onAmountMaxChange={(value) => {
+                  setAmountMax(value);
+                  setPage(1);
+                }}
+                search={search}
+                onSearchChange={(value) => {
+                  setSearch(value);
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            {/* Approver-only Export control (R11 / BR9 / §2). HIDDEN entirely for
+                Importers (not rendered disabled). Disabled with an explanation
+                when the active filter matches zero rows (BR6). */}
+            {canExport && (
+              <div className="flex shrink-0 flex-col items-start gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleExport}
+                  disabled={!exportEnabled}
+                  aria-describedby={
+                    exportEnabled ? undefined : 'export-disabled-reason'
+                  }
+                  title={exportEnabled ? undefined : EXPORT_DISABLED_REASON}
+                >
+                  <DownloadIcon className="size-4" aria-hidden="true" />
+                  Export CSV
+                </Button>
+                {!exportEnabled && (
+                  <p
+                    id="export-disabled-reason"
+                    className="max-w-xs text-xs text-muted-foreground"
+                  >
+                    {EXPORT_DISABLED_REASON}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
 
           {hasActiveFilters && (
             <div
