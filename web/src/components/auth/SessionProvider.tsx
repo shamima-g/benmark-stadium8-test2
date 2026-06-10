@@ -6,7 +6,7 @@
  * On mount it loads the authenticated user's profile from the same-origin BFF
  * proxy (`GET /api/auth/userinfo`) and normalises the BFF's PascalCase
  * UserInfoRead payload into the flat, client-facing `AuthUser` shape
- * ({ email, name, roles }) that descendants consume via `useSession()`.
+ * ({ email, name, roles, routes }) that descendants consume via `useSession()`.
  *
  * Transport: the userinfo proxy is a *same-origin* Next.js route handler, so it
  * is called with a plain same-origin `fetch('/api/auth/userinfo')` — NOT the
@@ -41,7 +41,7 @@ import {
   type ReactNode,
 } from 'react';
 import { AuthError } from '@/lib/auth/errors';
-import type { AuthUser, UserInfoRead } from '@/types/auth';
+import type { AuthUser, PageRead, UserInfoRead } from '@/types/auth';
 
 /** Same-origin BFF proxy endpoint that relays the session cookie server-side. */
 const USERINFO_PROXY_PATH = '/api/auth/userinfo';
@@ -61,6 +61,13 @@ const SessionContext = createContext<SessionContextValue | undefined>(
   undefined,
 );
 
+/** Collects PageRead.Route values from a Pages list, ignoring blanks. */
+function routesFrom(pages: PageRead[] | undefined): string[] {
+  return Array.isArray(pages)
+    ? pages.map((page) => page.Route).filter(Boolean)
+    : [];
+}
+
 /** Normalises the BFF UserInfoRead payload into the client-facing AuthUser. */
 function normaliseUser(info: UserInfoRead): AuthUser {
   const name = [info.FirstName, info.LastName]
@@ -69,7 +76,16 @@ function normaliseUser(info: UserInfoRead): AuthUser {
   const roles = Array.isArray(info.Roles)
     ? info.Roles.map((role) => role.Name).filter(Boolean)
     : [];
-  return { email: info.Email, name, roles };
+  // The granted route set is the union of the user's top-level Pages and the
+  // Pages carried by each of their roles — either may express access in the
+  // BFF payload (auth-api.yaml). De-duplicate so the gate has a clean set.
+  const roleRoutes = Array.isArray(info.Roles)
+    ? info.Roles.flatMap((role) => routesFrom(role.Pages))
+    : [];
+  const routes = Array.from(
+    new Set([...routesFrom(info.Pages), ...roleRoutes]),
+  );
+  return { email: info.Email, name, roles, routes };
 }
 
 /**
@@ -163,4 +179,15 @@ export function useSession(): SessionContextValue {
     throw new Error('useSession must be used within a SessionProvider');
   }
   return context;
+}
+
+/**
+ * Reads the authenticated session WITHOUT requiring a provider. Returns null
+ * when called outside a SessionProvider (e.g. the standalone login screen,
+ * which renders above the provider in some test contexts) so consumers that
+ * only want to opportunistically refresh the session can do so without forcing
+ * a provider into their render tree.
+ */
+export function useOptionalSession(): SessionContextValue | null {
+  return useContext(SessionContext) ?? null;
 }

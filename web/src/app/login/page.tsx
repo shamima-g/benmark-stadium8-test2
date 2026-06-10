@@ -25,9 +25,11 @@
  * their input via aria-describedby; the form is fully keyboard-operable
  * (native form submit on Enter, native tab order).
  *
- * Role-based landing after sign-in is Story 3's concern. On success this page
- * hands off to the protected landing route '/'; Story 3 replaces that with
- * role-aware routing.
+ * Role-based landing (Story 3): on success the form refreshes the session so the
+ * SessionProvider picks up the newly-issued profile, then hands off to the
+ * protected (app) root '/', which resolves the role-specific landing (Importer
+ * -> Dashboard, Approver -> Transactions) and redirects there. The form does not
+ * encode the role mapping itself.
  */
 
 import { useId, useState } from 'react';
@@ -45,12 +47,18 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useOptionalSession } from '@/components/auth/SessionProvider';
 import { loginSchema } from '@/lib/validation/schemas';
 
 /** Same-origin BFF proxy endpoint. Relative path keeps the session cookie. */
 const LOGIN_PROXY_PATH = '/api/auth/login';
 
-/** Where to land after a successful sign-in (Story 3 makes this role-aware). */
+/**
+ * Where to hand off after a successful sign-in. The protected (app) root ('/')
+ * resolves the role-specific landing (Importer -> Dashboard, Approver ->
+ * Transactions) and redirects there (Story 3); the login form does not encode
+ * the role mapping itself.
+ */
 const POST_LOGIN_ROUTE = '/';
 
 /** Per-field validation messages keyed by field name. */
@@ -68,6 +76,12 @@ const CONNECTIVITY_ERROR_MESSAGE =
 
 export default function LoginPage() {
   const router = useRouter();
+  // Opportunistic: when rendered under the app's SessionProvider (the real app)
+  // this lets a successful sign-in refresh the session so the provider sees the
+  // new profile before we hand off to the role-aware landing. Returns null when
+  // rendered without a provider (some isolated test contexts), in which case the
+  // handoff still happens via the router.
+  const session = useOptionalSession();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -143,8 +157,13 @@ export default function LoginPage() {
         setSubmitError(error);
         return;
       }
-      // Success: the proxy set the HttpOnly session cookie server-side.
-      // Hand off to the protected landing route (Story 3 makes it role-aware).
+      // Success: the proxy set the HttpOnly session cookie server-side. Refresh
+      // the session so the SessionProvider loads the new profile (which the
+      // (app) root needs to resolve the role-specific landing), then hand off to
+      // the protected root, which redirects to that landing.
+      if (session) {
+        await session.refresh();
+      }
       router.push(POST_LOGIN_ROUTE);
     } finally {
       setIsSubmitting(false);
