@@ -1,6 +1,6 @@
 # Build Time Estimates
 
-_Generated: 2026-06-10 09:06Z_
+_Generated: 2026-06-10 10:28Z_
 
 Predicted active build time per story, authored at the planning gate.
 Actuals are filled in from `timing-summary.json` once a story is built
@@ -40,11 +40,21 @@ Complexity: **S** small · **M** medium · **L** large.
 | 3 | Approver export of the filtered transactions as CSV | M | 35m | — | — | Approver-only Export control: pure client-side CSV builder (header + escaped rows) over exactly the filtered set, role-gated visibility, disabled-when-empty state, and a filename reflecting active filters + date. |
 | **Subtotal** | | | **2h 20m** | **—** | — | |
 
+## Epic 4
+
+| Story | Title | Complexity | Estimate | Actual | Variance | Driver |
+| --- | --- | :---: | --- | --- | --- | --- |
+| 1 | Approving an imported transaction | M | 40m | — | — | Establishes the Approver-only row-actions cell + the first mutation (approve endpoint, audit header, optimistic status transition, success/error toast — first toast consumer) + confirmation modal naming the reference. Sets the pattern Stories 2-4 reuse. |
+| 2 | Rejecting a transaction with a note | M | 40m | — | — | Reject modal with a mandatory rejection note: disabled-until-typed submit, on-blur + on-submit validation (whitespace-only = empty), reject endpoint with UserNote body + audit header, optimistic Rejected transition + toast. |
+| 3 | Hiding actions once a transaction is decided | S | 25m | — | — | Presentation/guard logic on top of Stories 1-2: actions render only for Imported rows, terminal-state top-of-page banner, and a concurrent-change guard that dismisses the modal with an explanation. No new endpoints. |
+| 4 | Reading why a transaction was rejected | S | 25m | — | — | Read-only display of the persisted rejection note on Rejected rows (expandable/affordance), visible to both roles; non-rejected rows show none. No mutation, no new endpoint. |
+| **Subtotal** | | | **2h 10m** | **—** | — | |
+
 ## Total
 
 | | Estimate | Actual | Variance |
 | --- | --- | --- | --- |
-| **All stories** | **8h 20m** | **—** | — |
+| **All stories** | **10h 30m** | **—** | — |
 
 ---
 

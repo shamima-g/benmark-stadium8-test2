@@ -95,6 +95,38 @@
       "complexity": "M",
       "estimateMin": 35,
       "driver": "Approver-only Export control: pure client-side CSV builder (header + escaped rows) over exactly the filtered set, role-gated visibility, disabled-when-empty state, and a filename reflecting active filters + date."
+    },
+    {
+      "epic": 4,
+      "story": 1,
+      "title": "Approving an imported transaction",
+      "complexity": "M",
+      "estimateMin": 40,
+      "driver": "Establishes the Approver-only row-actions cell + the first mutation (approve endpoint, audit header, optimistic status transition, success/error toast — first toast consumer) + confirmation modal naming the reference. Sets the pattern Stories 2-4 reuse."
+    },
+    {
+      "epic": 4,
+      "story": 2,
+      "title": "Rejecting a transaction with a note",
+      "complexity": "M",
+      "estimateMin": 40,
+      "driver": "Reject modal with a mandatory rejection note: disabled-until-typed submit, on-blur + on-submit validation (whitespace-only = empty), reject endpoint with UserNote body + audit header, optimistic Rejected transition + toast."
+    },
+    {
+      "epic": 4,
+      "story": 3,
+      "title": "Hiding actions once a transaction is decided",
+      "complexity": "S",
+      "estimateMin": 25,
+      "driver": "Presentation/guard logic on top of Stories 1-2: actions render only for Imported rows, terminal-state top-of-page banner, and a concurrent-change guard that dismisses the modal with an explanation. No new endpoints."
+    },
+    {
+      "epic": 4,
+      "story": 4,
+      "title": "Reading why a transaction was rejected",
+      "complexity": "S",
+      "estimateMin": 25,
+      "driver": "Read-only display of the persisted rejection note on Rejected rows (expandable/affordance), visible to both roles; non-rejected rows show none. No mutation, no new endpoint."
     }
   ]
 }
