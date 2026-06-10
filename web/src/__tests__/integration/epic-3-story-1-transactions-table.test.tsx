@@ -37,16 +37,17 @@
  *   5. Currency/amount FORMATTING (AC-6): a ZAR amount formats with a thousands
  *      separator and two decimals.
  *   6. A focused integration render of the page asserting the rendering DECISIONS
- *      this story owns: the read-only invariant (NO Approve/Reject control for any
- *      role — BR9), the zero-DATA empty state ("No transactions yet", no creation
- *      prompt — BR11), and the error-with-retry state (NFR5).
+ *      this story owns: the read-only-for-the-Importer invariant (an Importer sees
+ *      NO action control — BR9), the zero-DATA empty state ("No transactions yet",
+ *      no creation prompt — BR11), and the error-with-retry state (NFR5).
  *
  * Source of truth: generated-docs/specs/project-brief.md.
  *   - R6 (§7): Transactions table columns Reference, Transaction Date, Account,
  *     Description, Amount, Currency, Transaction Type, Status.
  *   - R16/R17 (§7): page sizes 5/10/20/50 default 20; single-column asc-then-desc.
- *   - BR9 (§8): Approve/Reject are Approver-only row actions; this story is
- *     read-only for BOTH roles (Approve/Reject lands in Epic 4).
+ *   - BR9 (§8): Approve/Reject are Approver-only row actions; an Importer sees the
+ *     Transactions table read-only with NO action controls. (Epic 4 adds the
+ *     Approver Approve action; the Importer read-only invariant is unchanged.)
  *   - BR11 (§8): zero-DATA empty state ("No transactions yet") carries NO creation
  *     prompt (transactions are created by file upload, not on this page).
  *   - NFR5 (§10): every async load has a user-visible error state with a retry.
@@ -130,13 +131,26 @@ vi.mock('@/lib/api/client', () => ({ get: vi.fn() }));
 const mockGet = get as ReturnType<typeof vi.fn>;
 
 // The page reads the signed-in user from the session to render the role-aware
-// (but here read-only for everyone) view. Mock the hook so each test can model
-// the persona; the real SessionProvider path is Epic-1 baseline coverage.
+// view. Mock the hook so each test can model the persona; the real
+// SessionProvider path is Epic-1 baseline coverage.
 vi.mock('@/components/auth/SessionProvider', () => ({
   useSession: vi.fn(),
   SessionProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 const mockUseSession = useSession as ReturnType<typeof vi.fn>;
+
+// The page consumes the Epic-1 toast system (a row-action feedback channel added
+// in Epic 4). Mock the context so this Epic-3 render does not depend on the toast
+// provider machinery — the toast behaviour itself is covered by its own stories.
+vi.mock('@/contexts/ToastContext', () => ({
+  useToast: vi.fn(() => ({
+    toasts: [],
+    showToast: vi.fn(),
+    dismissToast: vi.fn(),
+    clearAllToasts: vi.fn(),
+  })),
+  ToastProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -312,7 +326,7 @@ describe('Epic 3, Story 1: Transactions table', () => {
     const formatted = formatAmount(1500.5, 'ZAR');
     // Two decimal places retained.
     expect(formatted).toContain('1');
-    expect(formatted).toMatch(/1[ ,. ]?500[.,]50/);
+    expect(formatted).toMatch(/1[ ,. ]?500[.,]50/);
 
     // A round value still shows two decimals.
     expect(formatAmount(75, 'ZAR')).toMatch(/75[.,]00/);
@@ -322,13 +336,14 @@ describe('Epic 3, Story 1: Transactions table', () => {
   // Integration render: read-only invariant + empty / error states (AC-4/5, BR9/11)
   // ===================================================================
 
-  // BR9 — the Transactions table is READ-ONLY for BOTH roles in this story: no
-  // Approve and no Reject control is rendered for an Approver (Approve/Reject is
-  // Epic 4). This is the lower-cost jsdom guard that complements the Playwright
-  // role coverage.
-  it('renders no Approve or Reject control for an Approver (read-only — BR9)', async () => {
+  // BR9 — an Importer sees the Transactions table READ-ONLY with NO action
+  // controls (neither Approve nor Reject) on any row, regardless of row status.
+  // (Epic 4 adds the Approver-only Approve action; the Importer read-only
+  // invariant guarded here is unchanged.) This is the lower-cost jsdom guard that
+  // complements the Playwright role coverage.
+  it('renders no Approve or Reject control for an Importer (read-only — BR9)', async () => {
     mockGet.mockResolvedValue(createMockTransactionsList());
-    mockUseSession.mockReturnValue(sessionFor(['Approver']));
+    mockUseSession.mockReturnValue(sessionFor(['Importer']));
 
     render(<TransactionsPage />);
 

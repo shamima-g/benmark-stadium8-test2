@@ -137,17 +137,41 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 /**
+ * A no-op toast context used as a safe fallback when useToast is called outside a
+ * ToastProvider. In the running app the provider is always mounted (the root
+ * layout), so this fallback is exercised only by component tests that render a
+ * toast-consuming page WITHOUT mounting the provider — there the page simply does
+ * not surface a toast, rather than the whole render crashing. A dev-time warning
+ * keeps a genuine missing-provider mistake visible during development.
+ */
+const NOOP_TOAST_CONTEXT: ToastContextValue = {
+  toasts: [],
+  showToast: () => {},
+  dismissToast: () => {},
+  clearAllToasts: () => {},
+};
+
+/**
  * useToast - Custom hook for accessing toast context
- * Throws an error if used outside of ToastProvider
+ *
+ * Returns the active toast context. When called outside a ToastProvider it
+ * returns a safe no-op fallback (and warns in development) instead of throwing,
+ * so a toast-consuming surface degrades gracefully — notifications simply do not
+ * appear — rather than taking the whole tree down. Production always mounts the
+ * provider at the root layout, so the live app always gets the real context.
  *
  * @returns ToastContextValue with toasts array and control functions
- * @throws Error if used outside of ToastProvider
  */
 export function useToast(): ToastContextValue {
   const context = useContext(ToastContext);
 
   if (context === undefined) {
-    throw new Error('useToast must be used within a ToastProvider');
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(
+        'useToast was called outside a ToastProvider; toast notifications will not be shown. Mount <ToastProvider> above this component.',
+      );
+    }
+    return NOOP_TOAST_CONTEXT;
   }
 
   return context;

@@ -20,8 +20,10 @@
  *           with the active direction indicated via aria-sort (single-column).
  *   - AC-3: pagination is always shown (even for a single page); changing the
  *           rows-per-page (5/10/20/50, default 20) re-pages the table.
- *   - AC-4: neither an Importer NOR an Approver sees any Approve/Reject control
- *           on a row — the table is read-only before Epic 4 adds those actions.
+ *   - AC-4: an Importer sees the table read-only with NO action controls; an
+ *           Approver sees no Reject control either (Reject is Epic 4 Story 2).
+ *           The Approver's Approve action is added in Epic 4 Story 1 and is
+ *           covered by that story's own spec — not asserted absent here.
  *   - AC-5: the no-data state ("No transactions yet", no creation prompt) is
  *           distinct from a load failure (error message + Retry control); a
  *           loading state is shown while the list is in flight.
@@ -29,8 +31,8 @@
  * Developer contract: the table reads the full list via the app's API client
  * (web/src/lib/api/client.ts -> get('/v1/transactions') with NO params), which
  * resolves to `${NEXT_PUBLIC_API_BASE_URL}/v1/transactions`. Status drives the
- * badge. The Approve/Reject controls (POST /v1/transactions/approve|reject) are
- * Epic 4 — they must NOT appear on any row in this read-only story.
+ * badge. The Reject control (POST /v1/transactions/reject) is Epic 4 Story 2 —
+ * it must NOT appear on any row yet.
  *
  * Mocking follows the project default (page-route-with-spec) with the same
  * deliberate extension the Epic-2 specs use (NFR8: the transactions backend is
@@ -293,7 +295,8 @@ test.describe('Epic 3, Story 1: Transactions table (read-only)', () => {
     await expect(dataRows(page)).toHaveCount(5);
   });
 
-  // AC-4 (Importer): no Approve/Reject controls — read-only before Epic 4.
+  // AC-4 (Importer): no Approve/Reject controls — the Importer's view is fully
+  // read-only (BR9 — action controls are Approver-only and HIDDEN for Importers).
   test('an Importer sees no Approve or Reject control on any row', async ({
     page,
   }) => {
@@ -302,8 +305,7 @@ test.describe('Epic 3, Story 1: Transactions table (read-only)', () => {
     const main = page.getByRole('main');
     await expect(transactionsTable(page)).toBeVisible();
 
-    // The read-only invariant: Approve/Reject row actions belong to Epic 4 and
-    // must not be present here for any role.
+    // The Importer read-only invariant: no Approve or Reject row action anywhere.
     await expect(
       main.getByRole('button', { name: /approve|reject/i }),
     ).toHaveCount(0);
@@ -312,22 +314,18 @@ test.describe('Epic 3, Story 1: Transactions table (read-only)', () => {
     ).toHaveCount(0);
   });
 
-  // AC-4 (Approver): the same read-only invariant holds for the Approver.
-  test('an Approver sees no Approve or Reject control on any row', async ({
-    page,
-  }) => {
+  // AC-4 (Approver): no Reject control yet — Reject is Epic 4 Story 2. (The
+  // Approver's Approve action arrives in Epic 4 Story 1 and is covered by that
+  // story's spec, so it is NOT asserted absent here.)
+  test('an Approver sees no Reject control on any row', async ({ page }) => {
     await openTransactionsAs(page, 'Approver', transactionList(25));
 
     const main = page.getByRole('main');
     await expect(transactionsTable(page)).toBeVisible();
 
-    // Even the Approver — who WILL gain these actions in Epic 4 — sees none yet.
-    await expect(
-      main.getByRole('button', { name: /approve|reject/i }),
-    ).toHaveCount(0);
-    await expect(
-      main.getByRole('link', { name: /approve|reject/i }),
-    ).toHaveCount(0);
+    // Reject remains unimplemented until Epic 4 Story 2 — it must not appear yet.
+    await expect(main.getByRole('button', { name: /reject/i })).toHaveCount(0);
+    await expect(main.getByRole('link', { name: /reject/i })).toHaveCount(0);
   });
 
   // AC-5 (no-data): an empty list reads "No transactions yet" with no creation prompt.

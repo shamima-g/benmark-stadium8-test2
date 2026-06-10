@@ -2,19 +2,29 @@
 
 /**
  * Transactions (/transactions) — the read-only Transactions table with client-side
- * filtering & search (Epic 3, Stories 1 & 2), plus the Approver-only CSV export
- * (Epic 3, Story 3).
+ * filtering & search (Epic 3, Stories 1 & 2), the Approver-only CSV export (Epic 3,
+ * Story 3), and the Approver-only row-level Approve action (Epic 4, Story 1).
  *
- * Story 1 built the fetch → sort → paginate pipeline and the table. Story 2 LAYERS
- * R7 filtering onto it without rebuilding the table: a filter bar (Status / File /
- * Transaction-Date range / Amount range / free-text on Reference + Account Number),
- * active-filter chips with a single Clear-all (R18), a zero-FILTER-results state
- * distinct from the zero-DATA state (BR11), and a deep-link-in that reads
+ * Story 1 (Epic 3) built the fetch → sort → paginate pipeline and the table. Story 2
+ * LAYERS R7 filtering onto it without rebuilding the table: a filter bar (Status /
+ * File / Transaction-Date range / Amount range / free-text on Reference + Account
+ * Number), active-filter chips with a single Clear-all (R18), a zero-FILTER-results
+ * state distinct from the zero-DATA state (BR11), and a deep-link-in that reads
  * ?fileLogId=&status= and pre-applies them as initial filters (the Epic-2
  * file-detail status-count drill-through; AC-4). Story 3 LAYERS an Approver-only
- * Export control onto the toolbar (R11 / BR6 / BR9): it serialises EXACTLY the
- * currently-filtered set (the whole set, pre-pagination) to CSV client-side and
- * triggers a browser download named to reflect the active filters + date.
+ * Export control onto the toolbar (R11 / BR6 / BR9).
+ *
+ * Epic 4, Story 1 LAYERS an Approver-only row-level Approve action onto the table
+ * (R9 / BR1 / BR3 / BR9). It does NOT rebuild the pipeline. The action is rendered
+ * ONLY on Imported rows (only an Imported transaction can be approved) and ONLY for
+ * an Approver (canActionTransaction; §2 — HIDDEN entirely for Importers, not
+ * disabled). Clicking Approve opens a Shadcn alert-dialog confirmation naming that
+ * row's Reference, with a default-focused Cancel and a destructive-styled confirm
+ * (BR3). Confirming calls POST /v1/transactions/approve via the API client carrying
+ * the acting user in the LastChangedUser audit header, optimistically flips that
+ * row's Status to Approved (BR1 / R9), and raises a success toast; a rejected
+ * request leaves the row Imported and raises an error toast (NFR5 — no silent
+ * failure). This is the first consumer of the Epic-1 toast system.
  *
  * Data (R6 / §4): the full transactions list is fetched once via the shared API
  * client (GET /v1/transactions — no params, the approved spec gap — CLAUDE.md §3).
@@ -24,12 +34,7 @@
  *
  * Columns (R6): Reference, Transaction Date, Account, Description, Amount,
  * Currency, Transaction Type, Status — Status driving a colour-and-label badge
- * (§11). Amount is rendered as money (formatAmount) and sorts numerically.
- *
- * READ-ONLY (BR9 / AC-4): this surface renders NO row-level mutating controls for
- * ANY role — no Approve, no Reject (Epic 4). The only Approver-only affordance is
- * the toolbar Export control; per §2 it is HIDDEN entirely for Importers (not
- * rendered disabled). Both roles otherwise see the same read-only filtered view.
+ * (§11) — plus an Approver-only Actions column (Epic 4).
  *
  * Empty states (BR11): zero-DATA shows "No transactions yet" (no creation prompt —
  * transactions are created by file import in Epic 2). zero-FILTER-results shows a
@@ -44,8 +49,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowDownIcon, ArrowUpIcon, DownloadIcon, XIcon } from 'lucide-react';
 
-import { getTransactions } from '@/lib/api/transactions';
+import { approveTransaction, getTransactions } from '@/lib/api/transactions';
 import { useSession } from '@/components/auth/SessionProvider';
+import { useToast } from '@/contexts/ToastContext';
 import {
   toTransactionRow,
   formatAmount,
@@ -63,6 +69,7 @@ import {
   canExportTransactions,
   canExportNow,
 } from '@/lib/transactions/exportGating';
+import { canActionTransaction } from '@/lib/transactions/actionGating';
 import {
   parseTransactionFilterParams,
   activeFilterChips,
@@ -79,7 +86,7 @@ import {
   DEFAULT_PAGE_SIZE,
 } from '@/lib/table/pagination';
 import { TransactionStatusBadge } from '@/components/transactions/TransactionStatusBadge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
@@ -91,6 +98,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 /** The Transactions table columns (R6). Status is rendered as a badge, not sorted text. */
 const COLUMNS: { key: TransactionSortColumn; label: string }[] = [
@@ -106,6 +123,9 @@ const COLUMNS: { key: TransactionSortColumn; label: string }[] = [
 
 /** The selectable status values shown in the Status filter (project-brief §11). */
 const STATUS_FILTER_OPTIONS = ['Imported', 'Approved', 'Rejected'] as const;
+
+/** The transaction Status that is eligible for the Approve action (R9 / BR1). */
+const APPROVABLE_STATUS = 'Imported';
 
 /** The explanation shown when Export is disabled because nothing matches (BR6). */
 const EXPORT_DISABLED_REASON =
@@ -160,14 +180,32 @@ export default function TransactionsPage() {
     ),
   );
 
-  // The authenticated role set drives Export VISIBILITY (Approver-only; BR9 /
-  // §2 — hidden, not disabled, for Importers).
+  // The authenticated role set drives Export VISIBILITY and the row-level Approve
+  // action VISIBILITY — both Approver-only (BR9 / §2 — hidden, not disabled, for
+  // Importers).
   const { user } = useSession();
-  const canExport = canExportTransactions(user?.roles ?? []);
+  const roles = user?.roles ?? [];
+  const canExport = canExportTransactions(roles);
+  const canAction = canActionTransaction(roles);
+  // The LastChangedUser audit identity for the approve mutation (same source the
+  // Epic-2 Story-4 file cancel used): the acting user's name, falling back to email.
+  const actingUser = user?.name ?? user?.email ?? '';
+
+  // The toast system (Epic 1) — first consumer here. Success/error notifications
+  // for the approve action are raised through it. The runtime tree is under
+  // ToastProvider via the Epic-1 root layout.
+  const { showToast } = useToast();
 
   const [rows, setRows] = useState<TransactionRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Approve-confirmation state (BR3): the row pending confirmation, and an
+  // in-flight guard so the confirm control disables while the request settles.
+  const [pendingApproval, setPendingApproval] = useState<TransactionRow | null>(
+    null,
+  );
+  const [isApproving, setIsApproving] = useState(false);
 
   // Filter state (R7 — derived client-side). Seeded from the deep-link params.
   const [statusFilter, setStatusFilter] = useState(initialFilters.status ?? '');
@@ -277,6 +315,40 @@ export default function TransactionsPage() {
     const filename = buildTransactionsCsvFilename(filters, new Date());
     downloadCsv(filename, csv);
   }
+
+  // R9 / BR1 — confirm the pending approval: call the approve endpoint (carrying
+  // the acting user in the LastChangedUser audit header), and on success
+  // optimistically flip that row's Status to Approved + raise a success toast.
+  // On a rejected request the row stays Imported and an error toast is raised
+  // (AC-5 / NFR5 — no silent failure).
+  const handleConfirmApprove = useCallback(async () => {
+    if (!pendingApproval) return;
+    const target = pendingApproval;
+    setIsApproving(true);
+    try {
+      await approveTransaction(target.id, actingUser);
+      setRows((prev) =>
+        prev.map((row) =>
+          row.id === target.id ? { ...row, status: 'Approved' } : row,
+        ),
+      );
+      setPendingApproval(null);
+      showToast({
+        variant: 'success',
+        title: 'Transaction approved',
+        message: `${target.reference} is now Approved.`,
+      });
+    } catch {
+      setPendingApproval(null);
+      showToast({
+        variant: 'error',
+        title: 'Approval failed',
+        message: `We could not approve ${target.reference}. Please try again.`,
+      });
+    } finally {
+      setIsApproving(false);
+    }
+  }, [pendingApproval, actingUser, showToast]);
 
   // Active-filter chips + Clear-all (R18). Each chip's remover clears its own
   // criterion; the descriptors (key/label) come from the shared helper so the
@@ -541,6 +613,14 @@ export default function TransactionsPage() {
                           </TableHead>
                         );
                       })}
+                      {/* Approver-only Actions column (Epic 4). HIDDEN entirely
+                          for Importers (§2). Establishes the row-actions cell
+                          Stories 2–4 reuse. */}
+                      {canAction && (
+                        <TableHead className="px-2 py-2.5 text-right">
+                          Actions
+                        </TableHead>
+                      )}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -562,6 +642,24 @@ export default function TransactionsPage() {
                         <TableCell>
                           <TransactionStatusBadge status={row.status} />
                         </TableCell>
+                        {/* Approver-only row action (R9 / BR9 / §2). The Approve
+                            control is rendered ONLY on Imported rows — only an
+                            Imported transaction can be approved (an already-
+                            terminal row offers no action). */}
+                        {canAction && (
+                          <TableCell className="text-right">
+                            {row.status === APPROVABLE_STATUS && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPendingApproval(row)}
+                              >
+                                Approve
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -582,6 +680,48 @@ export default function TransactionsPage() {
           )}
         </div>
       )}
+
+      {/* R9 / BR1 / BR3 — Approve confirmation. Radix AlertDialog gives the
+          AlertDialogCancel (safe dismiss) default focus, guarding against an
+          accidental Enter. The dialog NAMES the transaction Reference, and the
+          confirm action carries the destructive variant so it reads as a serious
+          action. Kept open until the request settles so the in-flight state is
+          visible and a failure surfaces an error toast (AC-5). */}
+      <AlertDialog
+        open={pendingApproval !== null}
+        onOpenChange={(open) => {
+          if (!open && !isApproving) {
+            setPendingApproval(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Approve this transaction?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will approve{' '}
+              <span className="font-medium text-foreground">
+                {pendingApproval?.reference}
+              </span>{' '}
+              and move it to Approved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isApproving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: 'destructive' })}
+              onClick={(event) => {
+                // Keep the dialog open until the request settles.
+                event.preventDefault();
+                void handleConfirmApprove();
+              }}
+              disabled={isApproving}
+            >
+              {isApproving ? 'Approving…' : 'Approve'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
