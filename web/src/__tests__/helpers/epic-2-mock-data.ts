@@ -315,3 +315,137 @@ export const createMockTransactionList = (
 ): TransactionReadList => ({
   Transactions: transactions,
 });
+
+/**
+ * ---------------------------------------------------------------------------
+ * Story 4 (File Lifecycle — Validation Errors, Retry & Cancel) fixtures.
+ *
+ * Shapes mirror documentation/transactions-api.yaml
+ * (components.schemas.ValidationErrors / ColumnList / ColumnDefinition). Per the
+ * spec and project-brief §6 / §13:
+ *   - GET /v1/files/validation-errors returns a ValidationErrors object whose
+ *     `JsonArray` field is a JSON-array STRING (NOT a parsed array) — every
+ *     per-row error object is serialised into one string the page must JSON.parse.
+ *   - GET /v1/files/validation-errors/columns returns ColumnList — the grid's
+ *     column metadata, consumed dynamically (the error-row keys are not known
+ *     ahead of time). Visible:false columns are dropped from the rendered grid.
+ *
+ * The ColumnDefinition / ColumnList / ValidationErrors types are imported from
+ * @/types/api (the production shapes the developer must add for this story) so
+ * the factories always model exactly what the file-detail page consumes.
+ * ---------------------------------------------------------------------------
+ */
+
+import type {
+  ColumnDefinition,
+  ColumnList,
+  ValidationErrors,
+} from '@/types/api';
+
+/**
+ * The per-row error objects, serialised exactly as the backend delivers them:
+ * a JSON-array STRING under ValidationErrors.JsonArray. The keys here line up
+ * with the visible columns declared by createMockValidationColumns() so a parse +
+ * column-resolve + render round-trip is provable from one pair of fixtures.
+ *
+ * Row 1's Species is the bison's European common name ("Wisent") rather than the
+ * binomial "Bison bison" so that a `cell` query for /bison/i resolves to a single
+ * (the Name) cell — the integration render asserts exactly one such cell, and a
+ * Species value containing "bison" would have produced an ambiguous second match.
+ */
+const VALIDATION_ERROR_ROWS = [
+  {
+    Id: 23,
+    Name: 'Bison',
+    Age: '19',
+    Species: 'Wisent',
+    LastChangedUser: 'System',
+  },
+  {
+    Id: 24,
+    Name: 'Zebra',
+    Age: '7',
+    Species: 'Equus quagga',
+    LastChangedUser: 'System',
+  },
+];
+
+/**
+ * A GET /v1/files/validation-errors response. JsonArray is a STRING (the spec
+ * gap the parser must handle) — override to model an empty/malformed payload.
+ */
+export const createMockValidationErrors = (
+  overrides: Partial<ValidationErrors['ValidationErrors']> = {},
+): ValidationErrors => ({
+  ValidationErrors: {
+    JsonArray: JSON.stringify(VALIDATION_ERROR_ROWS),
+    ...overrides,
+  },
+});
+
+/**
+ * The column metadata GET /v1/files/validation-errors/columns returns. Includes a
+ * Visible:false column so the column-resolver's filtering is exercised, and uses
+ * HeaderText values distinct from the row keys so dynamic header rendering (not a
+ * hard-coded label) is what's proven.
+ */
+export const createMockValidationColumns = (
+  columns: ColumnDefinition[] = [
+    {
+      Name: 'Name',
+      HeaderText: 'Animal Name',
+      Visible: true,
+      CellAlignment: 'left',
+      CellDisplay: 'text',
+      Classes: 'col-name',
+    },
+    {
+      Name: 'Age',
+      HeaderText: 'Age',
+      Visible: true,
+      CellAlignment: 'right',
+      CellDisplay: 'number',
+      Classes: 'col-age',
+    },
+    {
+      Name: 'Species',
+      HeaderText: 'Species',
+      Visible: true,
+      CellAlignment: 'left',
+      CellDisplay: 'text',
+      Classes: 'col-species',
+    },
+    // Hidden column — must be dropped by resolveValidationColumns.
+    {
+      Name: 'LastChangedUser',
+      HeaderText: 'Changed By',
+      Visible: false,
+      CellAlignment: 'left',
+      CellDisplay: 'text',
+      Classes: 'col-cb',
+    },
+  ],
+): ColumnList => ({
+  ColumnList: columns,
+});
+
+/** A Failed FileLog (BR5) — the file-detail page surfaces its validation view. */
+export const createMockFailedFileLog = (
+  overrides: Partial<FileLog> = {},
+): FileLog =>
+  createMockFileLog({
+    Id: 1002,
+    CurrentFileName: 'bravo-2026-06-02.csv',
+    CurrentStatus: 'Failed',
+    RecordCount: '85',
+    ...overrides,
+  });
+
+/**
+ * Transactions for Failed FileLog 1002 that INCLUDE an Approved row — the BR7
+ * cancel-blocked fixture (canCancelFile must return false for file 1002).
+ */
+export const createMockTransactionsWithApproved = (): TransactionRead[] => [
+  createMockTransaction({ Id: 5201, FileLogId: 1002, Status: 'Imported' }),
+  createMockTransaction({ Id: 5202, FileLogId: 1002, Status: 'Approved' }),
+];

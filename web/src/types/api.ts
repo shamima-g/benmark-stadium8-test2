@@ -210,3 +210,44 @@ export interface FileSettingRead {
 export interface FileSettingReadList {
   FileSettings: FileSettingRead[];
 }
+
+/**
+ * ColumnDefinition — one UI column's metadata as
+ * GET /v1/files/validation-errors/columns returns it (PascalCase), mirroring
+ * documentation/transactions-api.yaml components.schemas.ColumnDefinition.
+ *
+ * Consumed by the file-detail validation-errors view (Epic 2, Story 4 / R15):
+ * the grid columns are built DYNAMICALLY from this metadata — the error-row keys
+ * are not known ahead of time. `Visible: false` columns are dropped from the
+ * rendered grid; `HeaderText` is the user-facing column label.
+ */
+export interface ColumnDefinition {
+  Name: string;
+  HeaderText: string;
+  Visible: boolean;
+  CellAlignment: string;
+  CellDisplay: string;
+  Classes: string;
+}
+
+/**
+ * ColumnList — the GET /v1/files/validation-errors/columns envelope
+ * ({ ColumnList: ColumnDefinition[] }), mirroring components.schemas.ColumnList.
+ */
+export interface ColumnList {
+  ColumnList: ColumnDefinition[];
+}
+
+/**
+ * ValidationErrors — the GET /v1/files/validation-errors envelope, mirroring
+ * documentation/transactions-api.yaml components.schemas.ValidationErrors.
+ *
+ * Quirk (project-brief §6 / §13): the per-row error objects are NOT delivered as
+ * a parsed array — `JsonArray` is a JSON-array STRING the file-detail view must
+ * JSON.parse before rendering (Epic 2, Story 4 / R15).
+ */
+export interface ValidationErrors {
+  ValidationErrors: {
+    JsonArray: string;
+  };
+}

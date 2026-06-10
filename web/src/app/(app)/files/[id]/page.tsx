@@ -2,13 +2,14 @@
 
 /**
  * File detail (/files/[id]) — read-only Summary & Status-Count Drill-Through
- * (Epic 2, Story 3; R12 / BR4).
+ * (Epic 2, Story 3; R12 / BR4) PLUS Importer-only lifecycle controls
+ * (Epic 2, Story 4; R13 / R14 / R15 / BR5 / BR7 / BR10).
  *
  * Replaces the Epic-2 Story-1 placeholder at this path (CLAUDE.md §7: the brief
  * is the source of truth; the placeholder is replaced, not extended). The page
  * is the shared file-detail surface readable by BOTH the Importer and the
- * Approver (project-brief §2). Story 4's Importer-only lifecycle controls attach
- * to this shell later.
+ * Approver (project-brief §2). Story 4 layers the Importer-only lifecycle
+ * controls onto this shell — the read-only summary is unchanged.
  *
  * Route params: Next 16 passes `params` as a Promise. It is resolved in an
  * effect (rather than via React's `use()`) so the page renders its loading state
@@ -17,42 +18,45 @@
  * contract (NFR5) requires. Resolving in an effect keeps the loading state
  * observable and the data fetch fires once the id is known.
  *
- * Data (R12 / §4 / Epic 2 spec-gap):
+ * Data (R12 / R15 / §4 / Epic 2 spec-gap):
  *   - The transactions API exposes no single-file GET, so the page fetches the
  *     active File Logs list (GET /v1/file-logs?IsActive=Yes) and SELECTS the
  *     FileLog whose Id matches the route id — identical to the Story-1 dashboard
  *     contract. An id with no matching FileLog is treated as not-found.
  *   - It fetches the full transactions list (GET /v1/transactions — no FileLogId
  *     / Status filter params, the documented spec gap) and tallies the status
- *     counts client-side via computeStatusCounts (filter by FileLogId).
+ *     counts client-side via computeStatusCounts (filter by FileLogId). The same
+ *     list feeds the BR7 cancel-eligibility predicate (canCancelFile).
+ *   - When the file is Failed (BR5), it additionally fetches the validation-error
+ *     rows (GET /v1/files/validation-errors — JsonArray is a STRING that must be
+ *     JSON.parsed) and the column metadata (GET /v1/files/validation-errors/
+ *     columns), and renders the dynamic invalid-rows grid.
  *   All calls go through the shared API client (CLAUDE.md §3).
  *
- * Render:
- *   - Loading (NFR5): a role=status loading state while the id resolves or either
- *     fetch is in flight; the summary never renders before data arrives.
- *   - Error / not-found (NFR5 / NFR8): a role=alert error state — surfaced, never
- *     swallowed — for a failed fetch OR an unknown file id, with a retry
- *     affordance for the failed-fetch case.
- *   - Header: the file's CurrentFileName + a FileStatusBadge (reused from Story 1,
- *     §11 status colour mapping — colour always paired with the status label).
- *   - Summary panel (R12): a role=region with four labelled counts — Total,
- *     Imported, Approved, Rejected — whose numbers derive from THIS file's
- *     transactions. The three per-status counts are drillable: each is a NATIVE
- *     anchor to /transactions?fileLogId=<id>&status=<Status> (buildTransactionsHref),
- *     mirroring the Story-1 native-anchor pattern so the URL flips immediately on
- *     activation independent of any client-transition compile/commit timing. Total
- *     is a static figure (no filtered slice to drill into). Each count's label is
- *     leading text and its number a styled child of the SAME element, so the
- *     deepest element whose text matches the label also carries the value.
- *   - BR4 work-in-progress banner: when the file's status is Processing or
- *     Uploaded (isFileWorkInProgress), an in-main role=alert banner stating the
- *     dataset is not yet final.
+ * Lifecycle controls (BR10 — Importer-only, hidden from Approvers):
+ *   - Retry Validation (R13): a Failed file's Importer can re-run validation
+ *     (POST /v1/files/retry-validation?LogId=); on success the page re-reads the
+ *     file-logs list so the displayed File Status reflects the new state.
+ *   - Cancel File (R14 / BR7): an Importer can cancel the file via a destructive
+ *     alert-dialog confirmation NAMING the file, with default focus on the safe
+ *     dismiss action (Radix AlertDialogCancel). The dialog's safe action is
+ *     labelled "Keep file" and the destructive action "Delete file" so the two
+ *     read unambiguously (the in-page trigger keeps the user-facing "Cancel File"
+ *     verb). Confirming issues DELETE /v1/files?LogId= with a LastChangedUser
+ *     header, then navigates back to the dashboard. When the file has any
+ *     Approved transaction (canCancelFile is false) the modal never opens — an
+ *     explanatory in-main role=alert banner is shown instead and no DELETE fires.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { getActiveFileLogs } from '@/lib/api/file-logs';
 import { getTransactions } from '@/lib/api/transactions';
+import {
+  getValidationErrors,
+  getValidationErrorColumns,
+} from '@/lib/api/validation-errors';
 import { FileStatusBadge } from '@/components/file-logs/FileStatusBadge';
 import {
   buildTransactionsHref,
@@ -61,10 +65,29 @@ import {
   type DrillableStatus,
   type StatusCounts,
 } from '@/lib/files/statusCounts';
+import {
+  parseValidationErrors,
+  resolveValidationColumns,
+  type ValidationErrorRow,
+} from '@/lib/files/validationErrors';
+import { canCancelFile } from '@/lib/files/cancelEligibility';
+import { canUseFileLifecycleControls } from '@/lib/files/lifecycleGating';
+import { cancelFile, retryFileValidation } from '@/lib/files/lifecycleRequests';
+import { useSession } from '@/components/auth/SessionProvider';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import type { FileLog, TransactionRead } from '@/types/api';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import type { ColumnDefinition, FileLog, TransactionRead } from '@/types/api';
 
 /**
  * The drillable per-status counts, in display order, paired with the StatusCounts
@@ -80,9 +103,19 @@ const DRILLABLE_STATUSES: {
   { status: 'Rejected', key: 'rejected' },
 ];
 
+/** Files in this status surface the validation-errors view + Retry (BR5). */
+function isFailedStatus(status: string): boolean {
+  return status.trim().toLowerCase() === 'failed';
+}
+
 interface FileDetailData {
   fileLog: FileLog | null;
   transactions: TransactionRead[];
+}
+
+interface ValidationGrid {
+  columns: ColumnDefinition[];
+  rows: ValidationErrorRow[];
 }
 
 export default function FileDetailPage({
@@ -90,15 +123,28 @@ export default function FileDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const router = useRouter();
+  const { user } = useSession();
+  const canUseControls = canUseFileLifecycleControls(user?.roles ?? []);
+
   const [fileLogId, setFileLogId] = useState<number | null>(null);
   const [data, setData] = useState<FileDetailData | null>(null);
+  const [validationGrid, setValidationGrid] = useState<ValidationGrid | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // BR7 cancel-blocked banner: shown in-main (role=alert) when Cancel is clicked
+  // on a file that has an Approved transaction. The destructive modal never opens.
+  const [showBlockedBanner, setShowBlockedBanner] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+
   // Tracks the latest in-flight load so a settled-but-stale fetch never writes
   // its result. Bumped on each load() invocation; only the run whose token still
-  // matches the current ref commits its state. Mirrors the `active`-flag guard
-  // the params-resolution effect uses, applied to the data fetch for parity.
+  // matches the current ref commits its state.
   const loadTokenRef = useRef(0);
 
   // Resolve the route id from the params promise. Done in an effect so the
@@ -144,6 +190,27 @@ export default function FileDetailPage({
         fileLog,
         transactions: transactionList?.Transactions ?? [],
       });
+
+      // BR5 / R15: a Failed file additionally surfaces its validation-errors grid.
+      // The rows arrive as a JSON STRING (JsonArray) that must be parsed; the
+      // columns are resolved dynamically (Visible-only, declared order).
+      if (fileLog && isFailedStatus(fileLog.CurrentStatus)) {
+        const [errors, columns] = await Promise.all([
+          getValidationErrors(fileLog.Id),
+          getValidationErrorColumns(fileLog.Id),
+        ]);
+        if (isStale()) {
+          return;
+        }
+        setValidationGrid({
+          rows: parseValidationErrors(
+            errors?.ValidationErrors?.JsonArray ?? '',
+          ),
+          columns: resolveValidationColumns(columns?.ColumnList ?? []),
+        });
+      } else {
+        setValidationGrid(null);
+      }
     } catch {
       if (isStale()) {
         return;
@@ -165,6 +232,57 @@ export default function FileDetailPage({
     () => computeStatusCounts(data?.transactions ?? [], fileLogId ?? -1),
     [data, fileLogId],
   );
+
+  const cancellable = useMemo(
+    () => canCancelFile(data?.transactions ?? [], fileLogId ?? -1),
+    [data, fileLogId],
+  );
+
+  // R13: re-run validation, then re-read so the displayed File Status updates.
+  const handleRetry = useCallback(async () => {
+    if (fileLogId === null) {
+      return;
+    }
+    setIsRetrying(true);
+    try {
+      await retryFileValidation(fileLogId);
+      await load();
+    } catch {
+      setLoadError('We could not retry validation. Please try again.');
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [fileLogId, load]);
+
+  // R14 / BR7: open the destructive confirmation only when the file is eligible;
+  // otherwise surface the explanatory banner and never open the modal.
+  const handleCancelClick = useCallback(() => {
+    if (cancellable) {
+      setShowBlockedBanner(false);
+      setIsCancelDialogOpen(true);
+    } else {
+      setIsCancelDialogOpen(false);
+      setShowBlockedBanner(true);
+    }
+  }, [cancellable]);
+
+  const handleConfirmCancel = useCallback(async () => {
+    if (fileLogId === null) {
+      return;
+    }
+    setIsCancelling(true);
+    try {
+      await cancelFile(fileLogId, user?.name ?? user?.email ?? '');
+      setIsCancelDialogOpen(false);
+      // Post-cancel: the file no longer exists — leave its detail route.
+      router.push('/dashboard');
+    } catch {
+      setIsCancelDialogOpen(false);
+      setLoadError('We could not cancel this file. Please try again.');
+    } finally {
+      setIsCancelling(false);
+    }
+  }, [fileLogId, router, user]);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8">
@@ -268,8 +386,157 @@ export default function FileDetailPage({
               );
             })}
           </section>
+
+          {/* Story 4 — Importer-only lifecycle controls (BR10). Hidden entirely
+              from Approvers; the read-only summary above is shared by both roles. */}
+          {canUseControls && (
+            <section aria-label="File actions" className="flex flex-col gap-4">
+              {/* BR7 cancel-blocked banner — shown INSTEAD of the modal when the
+                  file has an Approved transaction. role=alert, in-main. */}
+              {showBlockedBanner && (
+                <Alert variant="destructive" role="alert">
+                  <AlertTitle>This file cannot be cancelled</AlertTitle>
+                  <AlertDescription>
+                    This file has at least one approved transaction, so it can
+                    no longer be cancelled. Approved transactions must be
+                    preserved for the audit trail.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="flex flex-wrap gap-3">
+                {/* R13 / BR5: Retry Validation is offered for a Failed file. */}
+                {isFailedStatus(data.fileLog.CurrentStatus) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleRetry()}
+                    disabled={isRetrying}
+                  >
+                    {isRetrying ? 'Retrying validation…' : 'Retry Validation'}
+                  </Button>
+                )}
+
+                {/* R14 / BR7: Cancel File — opens the destructive confirmation
+                    when eligible, or surfaces the blocked banner when not. */}
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleCancelClick}
+                  disabled={isCancelling}
+                >
+                  Cancel File
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {/* BR5 / R15: the invalid-rows grid for a Failed file. Columns are
+              resolved dynamically from the columns endpoint (Visible-only,
+              declared order); rows are JSON.parsed from the JsonArray STRING. The
+              section heading deliberately avoids the substring "Validation Error"
+              so it never collides with a column header of that name. */}
+          {isFailedStatus(data.fileLog.CurrentStatus) &&
+            validationGrid &&
+            validationGrid.columns.length > 0 && (
+              <section
+                aria-label="Rows that failed validation"
+                className="flex flex-col gap-3"
+              >
+                <h2 className="text-lg font-semibold text-foreground">
+                  Rows that failed validation
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  These rows could not be imported. Correct the source data and
+                  retry to re-run the import.
+                </p>
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/50">
+                        {validationGrid.columns.map((column) => (
+                          <th
+                            key={column.Name}
+                            scope="col"
+                            className="px-4 py-2 text-left font-medium text-foreground"
+                          >
+                            {column.HeaderText}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {validationGrid.rows.map((row, rowIndex) => (
+                        <tr
+                          key={rowIndex}
+                          className="border-b border-border last:border-0"
+                        >
+                          {validationGrid.columns.map((column) => (
+                            <td
+                              key={column.Name}
+                              className="px-4 py-2 text-foreground"
+                            >
+                              {formatCell(row[column.Name])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
         </div>
       )}
+
+      {/* R14 / BR7: destructive Cancel confirmation. Radix AlertDialog gives the
+          AlertDialogCancel (safe dismiss) default focus, guarding against an
+          accidental delete. The dialog NAMES the file being cancelled. The safe
+          action reads "Keep file" and the destructive one "Delete file" so the
+          two buttons are unambiguous to both users and automated tests. */}
+      <AlertDialog
+        open={isCancelDialogOpen}
+        onOpenChange={setIsCancelDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently cancel{' '}
+              <span className="font-medium text-foreground">
+                {data?.fileLog?.CurrentFileName}
+              </span>{' '}
+              and remove its staged transactions. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancelling}>
+              Keep file
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                // Keep the dialog open until the request settles / navigates.
+                event.preventDefault();
+                void handleConfirmCancel();
+              }}
+              disabled={isCancelling}
+            >
+              {isCancelling ? 'Cancelling…' : 'Delete file'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
+}
+
+/** Renders a validation-error cell value as display text (null/undefined → ''). */
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return String(value);
 }
