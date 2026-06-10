@@ -36,6 +36,11 @@
  * Access is keyed off the user's granted route set (AuthUser.routes, derived
  * from PageRead.Route in the userinfo payload) rather than role names, so it is
  * robust to the §13 caveat that live role names may differ from the spec.
+ * Authorisation is delegated to isRouteAuthorised (Epic 2, Story 3): fixed
+ * routes still require an EXACT grant, while the dynamic file-detail surface
+ * (/files/[id]) is authorised by a granted '/files' PREFIX — so a shared
+ * file-detail page is reachable for both roles without broadening any fixed
+ * route's exact-match gate (Epic 1 Story 3 AC-3 / Story 4 nav stay intact).
  *
  * The root layout already provides the single <main> landmark; this layout (and
  * the AppShell it renders) must not introduce a second one (NFR1 / a single main
@@ -49,7 +54,11 @@ import { useSession } from '@/components/auth/SessionProvider';
 import { PermissionDeniedBanner } from '@/components/auth/PermissionDeniedBanner';
 import { AppShell } from '@/components/shell/AppShell';
 import { SessionTimeout } from '@/components/shell/SessionTimeout';
-import { ROOT_ROUTE, routeDisplayName } from '@/lib/auth/routes';
+import {
+  ROOT_ROUTE,
+  isRouteAuthorised,
+  routeDisplayName,
+} from '@/lib/auth/routes';
 
 const LOGIN_ROUTE = '/login';
 
@@ -80,8 +89,12 @@ export default function ProtectedAppLayout({
   const isRoot = pathname === ROOT_ROUTE;
 
   // AC-3: authenticated but the current route is not in the user's granted set.
+  // isRouteAuthorised keeps EXACT match for fixed routes and adds PREFIX match
+  // for the dynamic file-detail surface (a granted '/files' authorises
+  // '/files/<id>'), so file-detail content renders for both roles while an
+  // unauthorised fixed route still surfaces the denial banner.
   const grantedRoutes = user.routes ?? [];
-  const isAuthorised = isRoot || grantedRoutes.includes(pathname);
+  const isAuthorised = isRoot || isRouteAuthorised(pathname, grantedRoutes);
 
   return (
     <AppShell>

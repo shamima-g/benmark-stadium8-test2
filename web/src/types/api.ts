@@ -131,6 +131,48 @@ export interface FileLogList {
 }
 
 /**
+ * TransactionRead — a transaction as GET /v1/transactions returns it
+ * (PascalCase), mirroring documentation/transactions-api.yaml
+ * components.schemas.TransactionRead.
+ *
+ * Field notes the file-detail summary relies on (project-brief §6 / §13 and the
+ * Epic 2 spec-gap note in the epic overview):
+ *   - FileLogId (integer) is the owning file's Id. GET /v1/transactions exposes
+ *     no FileLogId/Status query params (the documented spec gap), so the file-
+ *     detail page fetches the full list and filters by FileLogId client-side
+ *     before tallying the status counts.
+ *   - Status is the per-transaction status enum string ('Imported' | 'Approved'
+ *     | 'Rejected') the status-count summary tallies (R12).
+ *   - Amount is typed `number` in the spec; the remaining fields are carried for
+ *     completeness but are not consumed by the status-count summary.
+ */
+export interface TransactionRead {
+  Id: number;
+  FileLogId: number;
+  FileName: string;
+  Reference: string;
+  TransactionDate: string;
+  AccountNumber: string;
+  Description: string;
+  Amount: number;
+  TransactionType: string;
+  Currency: string;
+  Status: string;
+  UserNote: string;
+  LastChangedUser: string;
+  LastChangedDate: string;
+}
+
+/**
+ * TransactionReadList — the GET /v1/transactions envelope
+ * ({ Transactions: TransactionRead[] }), mirroring
+ * components.schemas.TransactionReadList.
+ */
+export interface TransactionReadList {
+  Transactions: TransactionRead[];
+}
+
+/**
  * FileSettingRead — a File Setting as GET /v1/file-settings returns it
  * (PascalCase), mirroring documentation/transactions-api.yaml
  * components.schemas.FileSettingRead.

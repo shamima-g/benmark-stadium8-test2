@@ -164,6 +164,50 @@ describe('Epic 1, Story 4: Application shell with role-gated navigation and sign
     ).not.toBeInTheDocument();
   });
 
+  // §2 / R12 (Epic 2 Story 3) — the file-detail surface is granted to BOTH roles
+  // as a dynamic PREFIX ('/files') so the gate authorises concrete '/files/<id>'
+  // drill-throughs. But no page resolves at the bare '/files' prefix (only
+  // '/files/[id]' exists), so the data-driven nav must NOT render a 'File detail'
+  // destination — a link to '/files' would 404. The prefix authorises navigation
+  // INTO file detail (via a count drill-through / row click) without itself being
+  // a navigable top-level destination. Asserted for both personas.
+  it('does not render a File-detail nav item for the Importer (dynamic prefix is non-navigable)', async () => {
+    mockFetch.mockResolvedValue(importerUserinfo());
+    renderShell();
+
+    const nav = await findNav();
+    await waitFor(() => {
+      expect(
+        within(nav).getByRole('link', { name: /transactions/i }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      within(nav).queryByRole('link', { name: /file detail/i }),
+    ).not.toBeInTheDocument();
+    // No nav link should point at the bare '/files' prefix.
+    for (const link of within(nav).getAllByRole('link')) {
+      expect(link.getAttribute('href')).not.toBe('/files');
+    }
+  });
+
+  it('does not render a File-detail nav item for the Approver (dynamic prefix is non-navigable)', async () => {
+    mockFetch.mockResolvedValue(approverUserinfo());
+    renderShell();
+
+    const nav = await findNav();
+    await waitFor(() => {
+      expect(
+        within(nav).getByRole('link', { name: /transactions/i }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      within(nav).queryByRole('link', { name: /file detail/i }),
+    ).not.toBeInTheDocument();
+    for (const link of within(nav).getAllByRole('link')) {
+      expect(link.getAttribute('href')).not.toBe('/files');
+    }
+  });
+
   // --- Identity display (this story's delta) ---
 
   // §2 / NFR1 — the signed-in user's identity is surfaced in the shell.

@@ -62,7 +62,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { useSession } from '@/components/auth/SessionProvider';
-import { routeDisplayName } from '@/lib/auth/routes';
+import { isNavigableRoute, routeDisplayName } from '@/lib/auth/routes';
 import { cn } from '@/lib/utils';
 
 /** Same-origin BFF proxy endpoint. Relative path keeps the session cookie. */
@@ -84,12 +84,18 @@ interface NavDestination {
  * route set. Each granted route becomes a labelled destination via the
  * protected-route registry; the shell renders exactly these and nothing else, so
  * denied destinations are simply absent (§2: hidden, not disabled).
+ *
+ * Non-navigable granted routes are skipped (isNavigableRoute): a dynamic-prefix
+ * route such as '/files' is granted to authorise its '/files/<id>' sub-paths
+ * (the gate, isRouteAuthorised) but has NO landing page of its own, so a nav
+ * link to the bare prefix would 404. Such prefixes never become nav items — the
+ * shell renders only routes that actually land somewhere.
  */
 function destinationsFor(routes: string[] | undefined): NavDestination[] {
   const seen = new Set<string>();
   const destinations: NavDestination[] = [];
   for (const route of routes ?? []) {
-    if (!route || seen.has(route)) {
+    if (!route || seen.has(route) || !isNavigableRoute(route)) {
       continue;
     }
     seen.add(route);

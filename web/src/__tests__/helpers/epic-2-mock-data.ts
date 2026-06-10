@@ -210,3 +210,108 @@ export const createMockUploadFile = (
   name = 'transactions-2026-06-10.csv',
   content = 'Reference,Amount\nTXN-00001,1500.50\n',
 ): File => new File([content], name, { type: 'text/csv' });
+
+/**
+ * ---------------------------------------------------------------------------
+ * Story 3 (File Detail — Summary & Status-Count Drill-Through) fixtures.
+ *
+ * Shapes mirror documentation/transactions-api.yaml
+ * (components.schemas.TransactionRead / TransactionReadList). Per the Epic 2
+ * spec-gap note (epic overview §"Spec gaps") and the story summary, GET
+ * /v1/transactions exposes NO FileLogId / Status query params, so the file-
+ * detail page fetches the full transactions list and filters by FileLogId
+ * client-side before tallying the Total / Imported / Approved / Rejected counts
+ * (R12). The TransactionRead.Status enum the summary tallies is one of
+ * 'Imported' | 'Approved' | 'Rejected'; TransactionRead.FileLogId (integer) is
+ * the owning file's Id.
+ *
+ * The TransactionRead / TransactionReadList types are imported from @/types/api
+ * (the production shapes — added by this story's developer) so the factories
+ * always model exactly what the file-detail page consumes.
+ * ---------------------------------------------------------------------------
+ */
+
+import type { TransactionRead, TransactionReadList } from '@/types/api';
+
+/**
+ * A single Transaction as GET /v1/transactions returns it (PascalCase).
+ * Default models an Imported transaction belonging to FileLog 1001 with a
+ * realistic ZA-style payload. Override FileLogId / Status (and any other field)
+ * for ownership and status-count variations.
+ */
+export const createMockTransaction = (
+  overrides: Partial<TransactionRead> = {},
+): TransactionRead => ({
+  Id: 5001,
+  FileLogId: 1001,
+  FileName: 'bank-statements-2026-06-01.csv',
+  Reference: 'TXN-00001',
+  TransactionDate: '2026-06-01T10:00:00Z',
+  AccountNumber: '1001-2034-5567',
+  Description: 'Payment for invoice 1234',
+  Amount: 1500.5,
+  TransactionType: 'Debit',
+  Currency: 'ZAR',
+  Status: 'Imported',
+  UserNote: '',
+  LastChangedUser: 'System',
+  LastChangedDate: '2026-06-01 10:00:00',
+  ...overrides,
+});
+
+/**
+ * A spread of transactions deliberately mixing two owning files and the three
+ * terminal/working statuses so the client-side FileLogId filter AND the status
+ * tally can both be proven from one list:
+ *
+ *   FileLog 1001 (the file under test): 2 Imported, 1 Approved, 1 Rejected
+ *     -> Total 4 / Imported 2 / Approved 1 / Rejected 1
+ *   FileLog 2002 (a DIFFERENT file): 2 transactions that MUST be excluded by the
+ *     client-side FileLogId filter (the endpoint can't filter server-side).
+ */
+export const createMockTransactions = (): TransactionRead[] => [
+  createMockTransaction({
+    Id: 5001,
+    FileLogId: 1001,
+    Reference: 'TXN-00001',
+    Status: 'Imported',
+  }),
+  createMockTransaction({
+    Id: 5002,
+    FileLogId: 1001,
+    Reference: 'TXN-00002',
+    Status: 'Imported',
+  }),
+  createMockTransaction({
+    Id: 5003,
+    FileLogId: 1001,
+    Reference: 'TXN-00003',
+    Status: 'Approved',
+  }),
+  createMockTransaction({
+    Id: 5004,
+    FileLogId: 1001,
+    Reference: 'TXN-00004',
+    Status: 'Rejected',
+  }),
+  // Belong to a different file — must NOT be counted against FileLog 1001.
+  createMockTransaction({
+    Id: 6001,
+    FileLogId: 2002,
+    Reference: 'TXN-09001',
+    Status: 'Approved',
+  }),
+  createMockTransaction({
+    Id: 6002,
+    FileLogId: 2002,
+    Reference: 'TXN-09002',
+    Status: 'Rejected',
+  }),
+];
+
+/** The GET /v1/transactions envelope ({ Transactions: TransactionRead[] }). */
+export const createMockTransactionList = (
+  transactions: TransactionRead[] = createMockTransactions(),
+): TransactionReadList => ({
+  Transactions: transactions,
+});
