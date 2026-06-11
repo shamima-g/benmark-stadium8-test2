@@ -4,7 +4,8 @@
  * Transactions (/transactions) — the read-only Transactions table with client-side
  * filtering & search (Epic 3, Stories 1 & 2), the Approver-only CSV export (Epic 3,
  * Story 3), and the Approver-only row-level Approve (Epic 4, Story 1) and Reject
- * (Epic 4, Story 2) actions.
+ * (Epic 4, Story 2) actions, with terminal-state action hiding + a concurrent-change
+ * guard (Epic 4, Story 3).
  *
  * Story 1 (Epic 3) built the fetch → sort → paginate pipeline and the table. Story 2
  * LAYERS R7 filtering onto it without rebuilding the table: a filter bar (Status /
@@ -41,6 +42,21 @@
  * a success toast; a rejected request leaves the row Imported and raises an error
  * toast (AC-6 / NFR5 — no silent failure).
  *
+ * Epic 4, Story 3 makes BR1's terminal-state suppression EXPLICIT and adds the
+ * concurrent-change guard, LAYERING (not rebuilding) onto Stories 1/2:
+ *   - The row-actions cell gates off isActionableTransactionStatus(row.status) — the
+ *     single shared STATE predicate (Imported only). A decided row (Approved /
+ *     Rejected) offers no Approve or Reject control (AC-1).
+ *   - A top-of-page terminal-state banner (the Alert primitive) appears whenever the
+ *     currently-visible rows include any decided (Approved / Rejected) transaction,
+ *     explaining that decided transactions can no longer be actioned. It is ABSENT
+ *     when every visible row is still Imported (AC-2).
+ *   - The approve/reject confirm handlers detect an HTTP-409 "already decided"
+ *     response (isAlreadyDecidedError) — the row was decided by someone else between
+ *     the modal opening and confirm. On 409 the modal dismisses with an explanatory
+ *     NON-success notification; the row is NOT optimistically flipped and NO success
+ *     toast is raised, distinct from a generic failure (AC-4).
+ *
  * Data (R6 / §4): the full transactions list is fetched once via the shared API
  * client (GET /v1/transactions — no params, the approved spec gap — CLAUDE.md §3).
  * Filtering (R7), sorting (R17) and pagination (R16) are all derived client-side
@@ -62,11 +78,18 @@
 
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArrowDownIcon, ArrowUpIcon, DownloadIcon, XIcon } from 'lucide-react';
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  DownloadIcon,
+  InfoIcon,
+  XIcon,
+} from 'lucide-react';
 
 import {
   approveTransaction,
   getTransactions,
+  isAlreadyDecidedError,
   rejectTransaction,
 } from '@/lib/api/transactions';
 import { useSession } from '@/components/auth/SessionProvider';
@@ -88,7 +111,10 @@ import {
   canExportTransactions,
   canExportNow,
 } from '@/lib/transactions/exportGating';
-import { canActionTransaction } from '@/lib/transactions/actionGating';
+import {
+  canActionTransaction,
+  isActionableTransactionStatus,
+} from '@/lib/transactions/actionGating';
 import {
   isRejectionNoteValid,
   normaliseRejectionNote,
@@ -114,6 +140,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Table,
   TableBody,
@@ -148,15 +175,30 @@ const COLUMNS: { key: TransactionSortColumn; label: string }[] = [
 /** The selectable status values shown in the Status filter (project-brief §11). */
 const STATUS_FILTER_OPTIONS = ['Imported', 'Approved', 'Rejected'] as const;
 
-/** The transaction Status eligible for the Approve / Reject actions (R9 / R10 / BR1 / BR2). */
-const ACTIONABLE_STATUS = 'Imported';
-
 /** The explanation shown when Export is disabled because nothing matches (BR6). */
 const EXPORT_DISABLED_REASON =
   'No transactions to export for the current filter.';
 
 /** The note-required validation message shown when the Rejection Note is empty (BR2). */
 const NOTE_REQUIRED_MESSAGE = 'A rejection note is required.';
+
+/**
+ * The top-of-page terminal-state banner copy (BR1 / AC-2). Shown when the visible
+ * rows include any decided (Approved / Rejected) transaction.
+ */
+const TERMINAL_BANNER_TITLE = 'Some transactions have already been decided';
+const TERMINAL_BANNER_MESSAGE =
+  'Approved or rejected transactions are final and can no longer be actioned — only Imported transactions can be approved or rejected.';
+
+/**
+ * The explanatory notification shown when a confirmed approve/reject lands on a row
+ * that was ALREADY decided by someone else (HTTP 409; AC-4). It is deliberately a
+ * NON-success (info) notification — no decision is claimed.
+ */
+const ALREADY_DECIDED_TITLE = 'Already decided';
+function alreadyDecidedMessage(reference: string): string {
+  return `${reference} was already decided by someone else and can no longer be actioned.`;
+}
 
 /** Renders a Transaction Date string as a readable calendar date (falls back to raw). */
 function formatTransactionDate(value: string): string {
@@ -219,9 +261,9 @@ export default function TransactionsPage() {
   // back to email.
   const actingUser = user?.name ?? user?.email ?? '';
 
-  // The toast system (Epic 1). Success/error notifications for the approve and
-  // reject actions are raised through it. The runtime tree is under ToastProvider
-  // via the Epic-1 root layout.
+  // The toast system (Epic 1). Success/error/already-decided notifications for the
+  // approve and reject actions are raised through it. The runtime tree is under
+  // ToastProvider via the Epic-1 root layout.
   const { showToast } = useToast();
 
   const [rows, setRows] = useState<TransactionRow[]>([]);
@@ -345,6 +387,16 @@ export default function TransactionsPage() {
     [filteredRows, currentPage, pageSize],
   );
 
+  // BR1 / AC-2 — the terminal-state banner is tied to the rows the user can
+  // actually SEE: it shows when any visible (current-page) row is in a decided
+  // (non-actionable) state, and is absent when every visible row is still
+  // Imported. Gated off the SAME shared predicate the row-actions use, so the
+  // banner and the suppressed actions can never disagree.
+  const hasDecidedVisibleRows = useMemo(
+    () => pageRows.some((row) => !isActionableTransactionStatus(row.status)),
+    [pageRows],
+  );
+
   // Export enablement (BR6): only when the filtered set has at least one row.
   const exportEnabled = canExportNow(filteredRows.length);
 
@@ -362,8 +414,11 @@ export default function TransactionsPage() {
   // R9 / BR1 — confirm the pending approval: call the approve endpoint (carrying
   // the acting user in the LastChangedUser audit header), and on success
   // optimistically flip that row's Status to Approved + raise a success toast.
-  // On a rejected request the row stays Imported and an error toast is raised
-  // (AC-5 / NFR5 — no silent failure).
+  // On an HTTP-409 "already decided" race the row was decided by someone else
+  // between the modal opening and confirm: dismiss the modal with an explanatory
+  // NON-success notification, leave the row Imported, and raise NO success toast
+  // (AC-4). On any other rejected request the row stays Imported and a generic
+  // error toast is raised (AC-5 / NFR5 — no silent failure).
   const handleConfirmApprove = useCallback(async () => {
     if (!pendingApproval) return;
     const target = pendingApproval;
@@ -381,13 +436,23 @@ export default function TransactionsPage() {
         title: 'Transaction approved',
         message: `${target.reference} is now Approved.`,
       });
-    } catch {
+    } catch (error) {
+      // AC-4 — the concurrent-change no-op: the row turned terminal underneath.
+      // Dismiss with an explanation, no optimistic flip, no success toast.
       setPendingApproval(null);
-      showToast({
-        variant: 'error',
-        title: 'Approval failed',
-        message: `We could not approve ${target.reference}. Please try again.`,
-      });
+      if (isAlreadyDecidedError(error)) {
+        showToast({
+          variant: 'info',
+          title: ALREADY_DECIDED_TITLE,
+          message: alreadyDecidedMessage(target.reference),
+        });
+      } else {
+        showToast({
+          variant: 'error',
+          title: 'Approval failed',
+          message: `We could not approve ${target.reference}. Please try again.`,
+        });
+      }
     } finally {
       setIsApproving(false);
     }
@@ -407,9 +472,12 @@ export default function TransactionsPage() {
   // endpoint is called with the TRIMMED UserNote body + the acting user in the
   // LastChangedUser audit header; on success that row's Status is optimistically
   // flipped to Rejected AND the trimmed note is persisted on the row (so Story 4
-  // can render it read-only), and a success toast is raised. On a rejected
-  // request the row stays Imported and an error toast is raised (AC-6 / NFR5 —
-  // no silent failure).
+  // can render it read-only), and a success toast is raised. On an HTTP-409
+  // "already decided" race the row was decided by someone else between the modal
+  // opening and confirm: dismiss the modal with an explanatory NON-success
+  // notification, leave the row Imported, and raise NO success toast (AC-4). On
+  // any other rejected request the row stays Imported and a generic error toast
+  // is raised (AC-6 / NFR5 — no silent failure).
   const handleConfirmReject = useCallback(async () => {
     if (!pendingRejection) return;
     if (!isRejectionNoteValid(rejectionNote)) {
@@ -434,13 +502,21 @@ export default function TransactionsPage() {
         title: 'Transaction rejected',
         message: `${target.reference} is now Rejected.`,
       });
-    } catch {
+    } catch (error) {
       setPendingRejection(null);
-      showToast({
-        variant: 'error',
-        title: 'Rejection failed',
-        message: `We could not reject ${target.reference}. Please try again.`,
-      });
+      if (isAlreadyDecidedError(error)) {
+        showToast({
+          variant: 'info',
+          title: ALREADY_DECIDED_TITLE,
+          message: alreadyDecidedMessage(target.reference),
+        });
+      } else {
+        showToast({
+          variant: 'error',
+          title: 'Rejection failed',
+          message: `We could not reject ${target.reference}. Please try again.`,
+        });
+      }
     } finally {
       setIsRejecting(false);
     }
@@ -549,6 +625,19 @@ export default function TransactionsPage() {
           from the no-data state above). */}
       {!isLoading && !loadError && rows.length > 0 && (
         <div className="flex flex-col gap-4">
+          {/* BR1 / AC-2 — top-of-page terminal-state banner. Shown only when the
+              visible rows include a decided (Approved/Rejected) transaction;
+              absent when every visible row is still Imported. Reuses the Alert
+              primitive (role="alert"), scoped within the page's <main> landmark so
+              it never collides with the App-Router route announcer. */}
+          {hasDecidedVisibleRows && (
+            <Alert>
+              <InfoIcon aria-hidden="true" />
+              <AlertTitle>{TERMINAL_BANNER_TITLE}</AlertTitle>
+              <AlertDescription>{TERMINAL_BANNER_MESSAGE}</AlertDescription>
+            </Alert>
+          )}
+
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex-1">
               <FilterBar
@@ -738,13 +827,15 @@ export default function TransactionsPage() {
                         <TableCell>
                           <TransactionStatusBadge status={row.status} />
                         </TableCell>
-                        {/* Approver-only row actions (R9 / R10 / BR9 / §2). The
-                            Approve + Reject controls are rendered ONLY on Imported
-                            rows — only an Imported transaction can be approved or
-                            rejected (an already-terminal row offers no action). */}
+                        {/* Approver-only row actions (R9 / R10 / BR1 / BR9 / §2).
+                            BR1 / AC-1 — the Approve + Reject controls render ONLY
+                            on rows in the actionable 'Imported' state, gated off
+                            the shared isActionableTransactionStatus predicate. A
+                            decided (Approved/Rejected) row offers NO action — a
+                            decided transaction can no longer be changed. */}
                         {canAction && (
                           <TableCell className="text-right">
-                            {row.status === ACTIONABLE_STATUS && (
+                            {isActionableTransactionStatus(row.status) && (
                               <div className="flex items-center justify-end gap-2">
                                 <Button
                                   type="button"
@@ -792,7 +883,9 @@ export default function TransactionsPage() {
           accidental Enter. The dialog NAMES the transaction Reference, and the
           confirm action carries the destructive variant so it reads as a serious
           action. Kept open until the request settles so the in-flight state is
-          visible and a failure surfaces an error toast (AC-5). */}
+          visible and a failure surfaces an error toast (AC-5). On an HTTP-409
+          already-decided race the dialog dismisses with an explanatory info
+          notification rather than claiming success (Story 3 / AC-4). */}
       <AlertDialog
         open={pendingApproval !== null}
         onOpenChange={(open) => {
@@ -837,7 +930,9 @@ export default function TransactionsPage() {
           content (BR2), and the note validates on blur and on submit (whitespace-
           only counts as empty). Kept open until the request settles so the
           in-flight state is visible and a failure surfaces an error toast
-          (AC-6). */}
+          (AC-6). On an HTTP-409 already-decided race the dialog dismisses with an
+          explanatory info notification rather than claiming success (Story 3 /
+          AC-4). */}
       <AlertDialog
         open={pendingRejection !== null}
         onOpenChange={(open) => {
