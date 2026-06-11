@@ -1,0 +1,23 @@
+{
+  "_note": "Timing recording was paused on request. settings.json no longer fires timing-tracker.ps1. To RE-ENABLE: paste the 'resume' entry below back into hooks.UserPromptSubmit (after the workflow-guard.ps1 entry), and the 'yield' entry into hooks.Stop (between the capture-context 'response' entry and the token-tracker.ps1 entry), then delete this file. The build-timing.jsonl log and token tracking were left untouched.",
+  "UserPromptSubmit": {
+    "matcher": "*",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \".claude/hooks/timing-tracker.ps1\" -EventType resume",
+        "timeout": 5
+      }
+    ]
+  },
+  "Stop": {
+    "matcher": "*",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \".claude/hooks/timing-tracker.ps1\" -EventType yield",
+        "timeout": 5
+      }
+    ]
+  }
+}
