@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-06-11T06:11:13.272Z",
+  "totalActiveMs": 3832821,
+  "totalWaitMs": 408334,
+  "wallClockMs": 150262570,
+  "sessions": 4,
+  "longestWaitMs": 178544,
+  "phases": {
+    "PLAN": {
+      "activeMs": 3832821,
+      "turns": 5
+    }
+  },
+  "steps": {
+    "PLAN": 3832821
+  }
+}

@@ -1,0 +1,123 @@
+{
+  "generatedAt": "2026-06-11T06:11:13.611Z",
+  "total": {
+    "totalTokens": 24900618,
+    "input": 66041,
+    "output": 154486,
+    "cacheCreate": 1263949,
+    "cacheRead": 23416142,
+    "costUsd": 22.8596,
+    "messages": 340
+  },
+  "models": [
+    "claude-opus-4-8",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001"
+  ],
+  "uncostedMessages": 0,
+  "phases": {
+    "PLAN": {
+      "totalTokens": 12440759,
+      "input": 25861,
+      "output": 77665,
+      "cacheCreate": 439646,
+      "cacheRead": 11897587,
+      "costUsd": 10.0673,
+      "messages": 135
+    },
+    "BUILD": {
+      "totalTokens": 12459859,
+      "input": 40180,
+      "output": 76821,
+      "cacheCreate": 824303,
+      "cacheRead": 11518555,
+      "costUsd": 12.7923,
+      "messages": 205
+    }
+  },
+  "steps": {
+    "BUILD · epic 1 · story 2": {
+      "totalTokens": 12459859,
+      "input": 40180,
+      "output": 76821,
+      "cacheCreate": 824303,
+      "cacheRead": 11518555,
+      "costUsd": 12.7923,
+      "messages": 205
+    }
+  },
+  "agents": {
+    "main": {
+      "totalTokens": 14332663,
+      "input": 29507,
+      "output": 102489,
+      "cacheCreate": 341580,
+      "cacheRead": 13859087,
+      "costUsd": 11.7742,
+      "messages": 127
+    },
+    "feature-planner": {
+      "totalTokens": 620855,
+      "input": 5695,
+      "output": 14529,
+      "cacheCreate": 136213,
+      "cacheRead": 464418,
+      "costUsd": 1.4752,
+      "messages": 19
+    },
+    "intake-agent": {
+      "totalTokens": 837441,
+      "input": 17,
+      "output": 1347,
+      "cacheCreate": 70897,
+      "cacheRead": 765180,
+      "costUsd": 0.5157,
+      "messages": 15
+    },
+    "api-connectivity-agent": {
+      "totalTokens": 762303,
+      "input": 5441,
+      "output": 3716,
+      "cacheCreate": 68599,
+      "cacheRead": 684547,
+      "costUsd": 0.5347,
+      "messages": 22
+    },
+    "test-generator": {
+      "totalTokens": 2184025,
+      "input": 571,
+      "output": 11686,
+      "cacheCreate": 188897,
+      "cacheRead": 1982871,
+      "costUsd": 2.467,
+      "messages": 45
+    },
+    "code-reviewer": {
+      "totalTokens": 1444075,
+      "input": 23996,
+      "output": 7144,
+      "cacheCreate": 173970,
+      "cacheRead": 1238965,
+      "costUsd": 2.0054,
+      "messages": 29
+    },
+    "developer": {
+      "totalTokens": 4610361,
+      "input": 770,
+      "output": 12209,
+      "cacheCreate": 246878,
+      "cacheRead": 4350504,
+      "costUsd": 4.0273,
+      "messages": 74
+    },
+    "playwright-runner": {
+      "totalTokens": 108895,
+      "input": 44,
+      "output": 1366,
+      "cacheCreate": 36915,
+      "cacheRead": 70570,
+      "costUsd": 0.0601,
+      "messages": 9
+    }
+  }
+}

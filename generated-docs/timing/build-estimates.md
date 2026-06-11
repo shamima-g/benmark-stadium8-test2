@@ -1,14 +1,11 @@
 # Build Time Estimates
 
-_Generated: 2026-06-10 10:28Z_
+_Generated: 2026-06-11 06:11Z_
 
 Predicted active build time per story, authored at the planning gate.
 Actuals are filled in from `timing-summary.json` once a story is built
 (run `node .claude/scripts/timing-report.js` first to refresh them).
 Complexity: **S** small · **M** medium · **L** large.
-
-> Actuals not yet available — `timing-summary.json` is written when
-> `timing-report.js` runs (at COMPLETE, or any mid-build snapshot).
 
 ## Epic 1
 
