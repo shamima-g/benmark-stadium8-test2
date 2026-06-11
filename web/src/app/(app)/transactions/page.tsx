@@ -3,7 +3,8 @@
 /**
  * Transactions (/transactions) — the read-only Transactions table with client-side
  * filtering & search (Epic 3, Stories 1 & 2), the Approver-only CSV export (Epic 3,
- * Story 3), and the Approver-only row-level Approve action (Epic 4, Story 1).
+ * Story 3), and the Approver-only row-level Approve (Epic 4, Story 1) and Reject
+ * (Epic 4, Story 2) actions.
  *
  * Story 1 (Epic 3) built the fetch → sort → paginate pipeline and the table. Story 2
  * LAYERS R7 filtering onto it without rebuilding the table: a filter bar (Status /
@@ -24,7 +25,21 @@
  * the acting user in the LastChangedUser audit header, optimistically flips that
  * row's Status to Approved (BR1 / R9), and raises a success toast; a rejected
  * request leaves the row Imported and raises an error toast (NFR5 — no silent
- * failure). This is the first consumer of the Epic-1 toast system.
+ * failure).
+ *
+ * Epic 4, Story 2 LAYERS an Approver-only row-level Reject action ALONGSIDE Approve,
+ * reusing the same gated row-actions cell + canActionTransaction + alert-dialog +
+ * toast (R10 / BR2 / BR3 / BR9). Reject is offered ONLY on Imported rows and ONLY
+ * for an Approver. Clicking Reject opens a confirmation naming that row's Reference
+ * (BR3, default focus on Cancel) carrying a MANDATORY multi-line Rejection Note
+ * (BR2 / R10): the destructive submit stays disabled until the note carries
+ * non-whitespace content, and the note validates on blur and on submit (whitespace-
+ * only counts as empty — isRejectionNoteValid). Submitting calls POST
+ * /v1/transactions/reject with the trimmed UserNote body + the acting user in the
+ * LastChangedUser audit header, optimistically flips that row's Status to Rejected
+ * AND persists the note on the row (so Story 4 can render it read-only), and raises
+ * a success toast; a rejected request leaves the row Imported and raises an error
+ * toast (AC-6 / NFR5 — no silent failure).
  *
  * Data (R6 / §4): the full transactions list is fetched once via the shared API
  * client (GET /v1/transactions — no params, the approved spec gap — CLAUDE.md §3).
@@ -45,11 +60,15 @@
  * is surfaced, never swallowed.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowDownIcon, ArrowUpIcon, DownloadIcon, XIcon } from 'lucide-react';
 
-import { approveTransaction, getTransactions } from '@/lib/api/transactions';
+import {
+  approveTransaction,
+  getTransactions,
+  rejectTransaction,
+} from '@/lib/api/transactions';
 import { useSession } from '@/components/auth/SessionProvider';
 import { useToast } from '@/contexts/ToastContext';
 import {
@@ -71,6 +90,10 @@ import {
 } from '@/lib/transactions/exportGating';
 import { canActionTransaction } from '@/lib/transactions/actionGating';
 import {
+  isRejectionNoteValid,
+  normaliseRejectionNote,
+} from '@/lib/transactions/rejectionNote';
+import {
   parseTransactionFilterParams,
   activeFilterChips,
 } from '@/lib/transactions/deepLink';
@@ -90,6 +113,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
   TableBody,
@@ -124,12 +148,15 @@ const COLUMNS: { key: TransactionSortColumn; label: string }[] = [
 /** The selectable status values shown in the Status filter (project-brief §11). */
 const STATUS_FILTER_OPTIONS = ['Imported', 'Approved', 'Rejected'] as const;
 
-/** The transaction Status that is eligible for the Approve action (R9 / BR1). */
-const APPROVABLE_STATUS = 'Imported';
+/** The transaction Status eligible for the Approve / Reject actions (R9 / R10 / BR1 / BR2). */
+const ACTIONABLE_STATUS = 'Imported';
 
 /** The explanation shown when Export is disabled because nothing matches (BR6). */
 const EXPORT_DISABLED_REASON =
   'No transactions to export for the current filter.';
+
+/** The note-required validation message shown when the Rejection Note is empty (BR2). */
+const NOTE_REQUIRED_MESSAGE = 'A rejection note is required.';
 
 /** Renders a Transaction Date string as a readable calendar date (falls back to raw). */
 function formatTransactionDate(value: string): string {
@@ -181,19 +208,20 @@ export default function TransactionsPage() {
   );
 
   // The authenticated role set drives Export VISIBILITY and the row-level Approve
-  // action VISIBILITY — both Approver-only (BR9 / §2 — hidden, not disabled, for
-  // Importers).
+  // /Reject action VISIBILITY — all Approver-only (BR9 / §2 — hidden, not
+  // disabled, for Importers).
   const { user } = useSession();
   const roles = user?.roles ?? [];
   const canExport = canExportTransactions(roles);
   const canAction = canActionTransaction(roles);
-  // The LastChangedUser audit identity for the approve mutation (same source the
-  // Epic-2 Story-4 file cancel used): the acting user's name, falling back to email.
+  // The LastChangedUser audit identity for the approve/reject mutations (same
+  // source the Epic-2 Story-4 file cancel used): the acting user's name, falling
+  // back to email.
   const actingUser = user?.name ?? user?.email ?? '';
 
-  // The toast system (Epic 1) — first consumer here. Success/error notifications
-  // for the approve action are raised through it. The runtime tree is under
-  // ToastProvider via the Epic-1 root layout.
+  // The toast system (Epic 1). Success/error notifications for the approve and
+  // reject actions are raised through it. The runtime tree is under ToastProvider
+  // via the Epic-1 root layout.
   const { showToast } = useToast();
 
   const [rows, setRows] = useState<TransactionRow[]>([]);
@@ -206,6 +234,21 @@ export default function TransactionsPage() {
     null,
   );
   const [isApproving, setIsApproving] = useState(false);
+
+  // Reject-confirmation state (BR2 / BR3): the row pending rejection, the
+  // mandatory note text, whether the note-required message should show (set on
+  // blur or on a submit attempt), and an in-flight guard so the destructive
+  // submit disables while the request settles.
+  const [pendingRejection, setPendingRejection] =
+    useState<TransactionRow | null>(null);
+  const [rejectionNote, setRejectionNote] = useState('');
+  const [showNoteError, setShowNoteError] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+  const rejectionNoteId = useId();
+  const noteErrorId = useId();
+
+  // The note is valid only when it carries non-whitespace content (BR2 / R10).
+  const noteValid = isRejectionNoteValid(rejectionNote);
 
   // Filter state (R7 — derived client-side). Seeded from the deep-link params.
   const [statusFilter, setStatusFilter] = useState(initialFilters.status ?? '');
@@ -349,6 +392,59 @@ export default function TransactionsPage() {
       setIsApproving(false);
     }
   }, [pendingApproval, actingUser, showToast]);
+
+  // Opens the Reject modal for a row, resetting the note + validation state so a
+  // previously-typed note never leaks into the next rejection.
+  function openRejectModal(row: TransactionRow) {
+    setRejectionNote('');
+    setShowNoteError(false);
+    setPendingRejection(row);
+  }
+
+  // R10 / BR2 — confirm the pending rejection. The mandatory note is validated on
+  // submit (whitespace-only counts as empty): an invalid note surfaces the
+  // required message and aborts without an API call. Otherwise the reject
+  // endpoint is called with the TRIMMED UserNote body + the acting user in the
+  // LastChangedUser audit header; on success that row's Status is optimistically
+  // flipped to Rejected AND the trimmed note is persisted on the row (so Story 4
+  // can render it read-only), and a success toast is raised. On a rejected
+  // request the row stays Imported and an error toast is raised (AC-6 / NFR5 —
+  // no silent failure).
+  const handleConfirmReject = useCallback(async () => {
+    if (!pendingRejection) return;
+    if (!isRejectionNoteValid(rejectionNote)) {
+      setShowNoteError(true);
+      return;
+    }
+    const target = pendingRejection;
+    const note = normaliseRejectionNote(rejectionNote);
+    setIsRejecting(true);
+    try {
+      await rejectTransaction(target.id, note, actingUser);
+      setRows((prev) =>
+        prev.map((row) =>
+          row.id === target.id
+            ? { ...row, status: 'Rejected', userNote: note }
+            : row,
+        ),
+      );
+      setPendingRejection(null);
+      showToast({
+        variant: 'success',
+        title: 'Transaction rejected',
+        message: `${target.reference} is now Rejected.`,
+      });
+    } catch {
+      setPendingRejection(null);
+      showToast({
+        variant: 'error',
+        title: 'Rejection failed',
+        message: `We could not reject ${target.reference}. Please try again.`,
+      });
+    } finally {
+      setIsRejecting(false);
+    }
+  }, [pendingRejection, rejectionNote, actingUser, showToast]);
 
   // Active-filter chips + Clear-all (R18). Each chip's remover clears its own
   // criterion; the descriptors (key/label) come from the shared helper so the
@@ -642,21 +738,31 @@ export default function TransactionsPage() {
                         <TableCell>
                           <TransactionStatusBadge status={row.status} />
                         </TableCell>
-                        {/* Approver-only row action (R9 / BR9 / §2). The Approve
-                            control is rendered ONLY on Imported rows — only an
-                            Imported transaction can be approved (an already-
-                            terminal row offers no action). */}
+                        {/* Approver-only row actions (R9 / R10 / BR9 / §2). The
+                            Approve + Reject controls are rendered ONLY on Imported
+                            rows — only an Imported transaction can be approved or
+                            rejected (an already-terminal row offers no action). */}
                         {canAction && (
                           <TableCell className="text-right">
-                            {row.status === APPROVABLE_STATUS && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setPendingApproval(row)}
-                              >
-                                Approve
-                              </Button>
+                            {row.status === ACTIONABLE_STATUS && (
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setPendingApproval(row)}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openRejectModal(row)}
+                                >
+                                  Reject
+                                </Button>
+                              </div>
                             )}
                           </TableCell>
                         )}
@@ -718,6 +824,89 @@ export default function TransactionsPage() {
               disabled={isApproving}
             >
               {isApproving ? 'Approving…' : 'Approve'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* R10 / BR2 / BR3 — Reject confirmation with a MANDATORY rejection note.
+          Radix AlertDialog gives AlertDialogCancel default focus (BR3 — an
+          accidental Enter does not reject). The dialog NAMES the transaction
+          Reference (BR3) and carries a labelled multi-line note field; the
+          destructive submit stays disabled until the note carries non-whitespace
+          content (BR2), and the note validates on blur and on submit (whitespace-
+          only counts as empty). Kept open until the request settles so the
+          in-flight state is visible and a failure surfaces an error toast
+          (AC-6). */}
+      <AlertDialog
+        open={pendingRejection !== null}
+        onOpenChange={(open) => {
+          if (!open && !isRejecting) {
+            setPendingRejection(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject this transaction?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will reject{' '}
+              <span className="font-medium text-foreground">
+                {pendingRejection?.reference}
+              </span>{' '}
+              and move it to Rejected. Add a note explaining why.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={rejectionNoteId}>Rejection note</Label>
+            <Textarea
+              id={rejectionNoteId}
+              value={rejectionNote}
+              onChange={(event) => {
+                setRejectionNote(event.target.value);
+                // Typing valid content clears any pending required message (BR2).
+                if (isRejectionNoteValid(event.target.value)) {
+                  setShowNoteError(false);
+                }
+              }}
+              onBlur={() => {
+                // Validate on blur (BR2): an empty/whitespace note surfaces the
+                // required message.
+                if (!isRejectionNoteValid(rejectionNote)) {
+                  setShowNoteError(true);
+                }
+              }}
+              aria-invalid={showNoteError && !noteValid}
+              aria-describedby={
+                showNoteError && !noteValid ? noteErrorId : undefined
+              }
+              placeholder="Explain why this transaction is being rejected"
+              disabled={isRejecting}
+            />
+            {showNoteError && !noteValid && (
+              <p
+                id={noteErrorId}
+                role="alert"
+                className="text-sm text-destructive"
+              >
+                {NOTE_REQUIRED_MESSAGE}
+              </p>
+            )}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRejecting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: 'destructive' })}
+              onClick={(event) => {
+                // Keep the dialog open until the request settles.
+                event.preventDefault();
+                void handleConfirmReject();
+              }}
+              disabled={isRejecting || !noteValid}
+            >
+              {isRejecting ? 'Rejecting…' : 'Reject'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

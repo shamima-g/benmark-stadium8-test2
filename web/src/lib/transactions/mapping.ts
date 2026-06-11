@@ -51,6 +51,13 @@ export interface TransactionRow {
   transactionType: string;
   /** TransactionRead.Status → the source for the status badge. */
   status: string;
+  /**
+   * TransactionRead.UserNote → the Rejection Note recorded when a transaction is
+   * rejected (Epic 4, Story 2; R10). Carried on the row so the Reject action can
+   * persist the submitted note optimistically and Story 4 can render it read-only.
+   * Defaults to an empty string when the backend supplies none.
+   */
+  userNote: string;
 }
 
 /**
@@ -114,5 +121,6 @@ export function toTransactionRow(tx: TransactionRead): TransactionRow {
     currency: tx.Currency,
     transactionType: normaliseTransactionType(tx.TransactionType),
     status: tx.Status,
+    userNote: tx.UserNote ?? '',
   };
 }
