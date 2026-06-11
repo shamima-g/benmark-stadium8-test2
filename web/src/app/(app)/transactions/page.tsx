@@ -5,7 +5,8 @@
  * filtering & search (Epic 3, Stories 1 & 2), the Approver-only CSV export (Epic 3,
  * Story 3), and the Approver-only row-level Approve (Epic 4, Story 1) and Reject
  * (Epic 4, Story 2) actions, with terminal-state action hiding + a concurrent-change
- * guard (Epic 4, Story 3).
+ * guard (Epic 4, Story 3), and the read-only Rejection Note shown on Rejected rows
+ * for every role (Epic 4, Story 4).
  *
  * Story 1 (Epic 3) built the fetch → sort → paginate pipeline and the table. Story 2
  * LAYERS R7 filtering onto it without rebuilding the table: a filter bar (Status /
@@ -56,6 +57,16 @@
  *     the modal opening and confirm. On 409 the modal dismisses with an explanatory
  *     NON-success notification; the row is NOT optimistically flipped and NO success
  *     toast is raised, distinct from a generic failure (AC-4).
+ *
+ * Epic 4, Story 4 LAYERS a READ-ONLY Rejection Note display onto Rejected rows (BR8).
+ * It does NOT rebuild the pipeline and adds NO endpoint — the note is the UserNote
+ * already mapped onto row.userNote (Story 2). Inside the Description cell, a Rejected
+ * row whose note is non-empty shows the stored note as plain read-only text (no input,
+ * no textarea, no contenteditable — note ENTRY lives only inside the closed Reject
+ * modal). The display is gated off the Rejected STATUS (isRejectedTransactionStatus),
+ * not mere note presence, so an Imported/Approved row never surfaces a stray note
+ * (AC-2). It is role-INDEPENDENT — NOT gated by canActionTransaction — so an Importer,
+ * who sees no Approve/Reject controls, still reads the note (AC-3).
  *
  * Data (R6 / §4): the full transactions list is fetched once via the shared API
  * client (GET /v1/transactions — no params, the approved spec gap — CLAUDE.md §3).
@@ -114,6 +125,7 @@ import {
 import {
   canActionTransaction,
   isActionableTransactionStatus,
+  isRejectedTransactionStatus,
 } from '@/lib/transactions/actionGating';
 import {
   isRejectionNoteValid,
@@ -181,6 +193,12 @@ const EXPORT_DISABLED_REASON =
 
 /** The note-required validation message shown when the Rejection Note is empty (BR2). */
 const NOTE_REQUIRED_MESSAGE = 'A rejection note is required.';
+
+/**
+ * The label prefixing a Rejected row's read-only Rejection Note (BR8). Names the
+ * note so the read-only text is unambiguously the rejection reason, not stray copy.
+ */
+const REJECTION_NOTE_LABEL = 'Rejection note';
 
 /**
  * The top-of-page terminal-state banner copy (BR1 / AC-2). Shown when the visible
@@ -251,7 +269,8 @@ export default function TransactionsPage() {
 
   // The authenticated role set drives Export VISIBILITY and the row-level Approve
   // /Reject action VISIBILITY — all Approver-only (BR9 / §2 — hidden, not
-  // disabled, for Importers).
+  // disabled, for Importers). The read-only Rejection Note (Story 4 / BR8) is
+  // deliberately NOT gated by this — every role reads a Rejected row's note.
   const { user } = useSession();
   const roles = user?.roles ?? [];
   const canExport = canExportTransactions(roles);
@@ -809,56 +828,82 @@ export default function TransactionsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pageRows.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="font-medium">
-                          {row.reference}
-                        </TableCell>
-                        <TableCell>
-                          {formatTransactionDate(row.transactionDate)}
-                        </TableCell>
-                        <TableCell>{row.account}</TableCell>
-                        <TableCell>{row.description}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatAmount(row.amount, row.currency)}
-                        </TableCell>
-                        <TableCell>{row.currency}</TableCell>
-                        <TableCell>{row.transactionType}</TableCell>
-                        <TableCell>
-                          <TransactionStatusBadge status={row.status} />
-                        </TableCell>
-                        {/* Approver-only row actions (R9 / R10 / BR1 / BR9 / §2).
-                            BR1 / AC-1 — the Approve + Reject controls render ONLY
-                            on rows in the actionable 'Imported' state, gated off
-                            the shared isActionableTransactionStatus predicate. A
-                            decided (Approved/Rejected) row offers NO action — a
-                            decided transaction can no longer be changed. */}
-                        {canAction && (
-                          <TableCell className="text-right">
-                            {isActionableTransactionStatus(row.status) && (
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setPendingApproval(row)}
-                                >
-                                  Approve
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openRejectModal(row)}
-                                >
-                                  Reject
-                                </Button>
-                              </div>
-                            )}
+                    {pageRows.map((row) => {
+                      // BR8 / Story 4 — a Rejected row whose UserNote carries
+                      // content surfaces that note read-only (below the
+                      // Description). Gated off the Rejected STATUS, not mere note
+                      // presence, so a stray note on a non-rejected row is never
+                      // shown (AC-2). Role-INDEPENDENT — every role reads it (AC-3).
+                      const showRejectionNote =
+                        isRejectedTransactionStatus(row.status) &&
+                        row.userNote.trim().length > 0;
+                      return (
+                        <TableRow key={row.id}>
+                          <TableCell className="font-medium">
+                            {row.reference}
                           </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
+                          <TableCell>
+                            {formatTransactionDate(row.transactionDate)}
+                          </TableCell>
+                          <TableCell>{row.account}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span>{row.description}</span>
+                              {/* BR8 — the stored Rejection Note shown READ-ONLY:
+                                  plain text, no input/textarea/contenteditable
+                                  bound to it (note ENTRY is Story 2, inside the
+                                  closed Reject modal). */}
+                              {showRejectionNote && (
+                                <p className="text-xs text-muted-foreground">
+                                  <span className="font-medium text-foreground">
+                                    {REJECTION_NOTE_LABEL}:
+                                  </span>{' '}
+                                  {row.userNote}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatAmount(row.amount, row.currency)}
+                          </TableCell>
+                          <TableCell>{row.currency}</TableCell>
+                          <TableCell>{row.transactionType}</TableCell>
+                          <TableCell>
+                            <TransactionStatusBadge status={row.status} />
+                          </TableCell>
+                          {/* Approver-only row actions (R9 / R10 / BR1 / BR9 / §2).
+                              BR1 / AC-1 — the Approve + Reject controls render ONLY
+                              on rows in the actionable 'Imported' state, gated off
+                              the shared isActionableTransactionStatus predicate. A
+                              decided (Approved/Rejected) row offers NO action — a
+                              decided transaction can no longer be changed. */}
+                          {canAction && (
+                            <TableCell className="text-right">
+                              {isActionableTransactionStatus(row.status) && (
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setPendingApproval(row)}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openRejectModal(row)}
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </Card>

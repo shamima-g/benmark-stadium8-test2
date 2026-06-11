@@ -25,6 +25,9 @@
 /** The single Transaction Status eligible for the Approve / Reject actions (BR1). */
 export const ACTIONABLE_STATUS = 'Imported';
 
+/** The terminal Status that carries a read-only Rejection Note (BR8, §11). */
+export const REJECTED_STATUS = 'Rejected';
+
 /** True only when the role set includes 'Approver' (case-insensitive, null-safe). */
 export function canActionTransaction(roles: string[]): boolean {
   if (!Array.isArray(roles)) {
@@ -44,4 +47,17 @@ export function isActionableTransactionStatus(
   status: string | null | undefined,
 ): boolean {
   return status === ACTIONABLE_STATUS;
+}
+
+/**
+ * True ONLY when the row's Status is the terminal 'Rejected' state — the single
+ * state whose stored Rejection Note (UserNote) is surfaced read-only on the table
+ * (BR8). Case-sensitive against the canonical §11 vocabulary; null-safe. The
+ * read-only note display gates off THIS predicate (the Rejected status), not off
+ * mere note presence, so a stray note on a non-rejected row is never surfaced.
+ */
+export function isRejectedTransactionStatus(
+  status: string | null | undefined,
+): boolean {
+  return status === REJECTED_STATUS;
 }
