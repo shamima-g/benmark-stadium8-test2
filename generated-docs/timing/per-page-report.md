@@ -1,6 +1,6 @@
 # Per-Page Build Report
 
-_Generated: 2026-06-11 06:11Z_
+_Generated: 2026-06-11 06:39Z_
 
 One row per **page (wireframe)** — a routable story — joining its planning
 **estimate**, measured **active build time**, estimate-vs-actual **variance**,

@@ -1,0 +1,810 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stadium 8 — Workflow Cost & Duration Report</title>
+<style>
+:root{--bg:#0b1020;--card:#151c30;--ink:#e8edf7;--muted:#94a3b8;--line:#26304a;--accent:#8b5cf6;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:32px}
+h1{font-size:26px;margin:0 0 4px} h2{margin:36px 0 12px;font-size:20px;border-bottom:1px solid var(--line);padding-bottom:6px}
+h3{margin:0 0 12px;font-size:15px;color:var(--muted)}
+.sub{color:var(--muted);margin:0 0 24px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card .v{font-size:24px;font-weight:700} .card .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.card .z{color:var(--accent);font-size:13px;margin-top:2px}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+@media(max-width:900px){.charts{grid-template-columns:1fr}}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+.bar-row{display:grid;grid-template-columns:160px 1fr 190px;gap:10px;align-items:center;margin:7px 0;font-size:13px}
+.bar-lbl{color:var(--muted);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{background:#0b1020;border-radius:6px;height:18px;overflow:hidden}
+.bar-fill{height:100%;border-radius:6px}
+.bar-val{font-variant-numeric:tabular-nums;font-size:12px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#0e1424;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0}
+.epic-row td{background:#1c2540;font-size:14px} .story-row td{background:#121a2e;color:#cbd5e1}
+.muted{color:var(--muted)} .mono{font-family:ui-monospace,Menlo,Consolas,monospace} .small{font-size:11px}
+.num,.ag{white-space:nowrap} td.num{text-align:right;font-variant-numeric:tabular-nums}
+.note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:16px 18px;font-size:13px;color:#cbd5e1}
+.note li{margin:5px 0} code{background:#0b1020;padding:1px 5px;border-radius:4px}
+.wrap{overflow-x:auto}
+</style></head><body>
+<h1>Stadium 8 — Workflow Cost &amp; Duration Report</h1>
+<p class="sub">Parsed 143 transcripts (2497 unique priced messages) under the project's Claude Code history · Generated 2026-06-11 · 1 USD = 16.5576 ZAR (TradingEconomics mid-market, 2026-06-11)</p>
+
+<div class="cards">
+  <div class="card"><div class="l">Grand total</div><div class="v">$190.93</div><div class="z">R3,161.36</div></div>
+  <div class="card"><div class="l">Build total</div><div class="v">$167.64</div><div class="z">R2,775.76</div></div>
+  <div class="card"><div class="l">Total tokens</div><div class="v">226,833,507</div><div class="z">205,862,329 build</div></div>
+  <div class="card"><div class="l">Output tokens</div><div class="v">907,273</div><div class="z">686,514 build</div></div>
+  <div class="card"><div class="l">Sub-agents</div><div class="v">128</div><div class="z">across 4 build sessions</div></div>
+  <div class="card"><div class="l">Priced messages</div><div class="v">2,497</div><div class="z">deduped by id</div></div>
+</div>
+
+<h2>Cost by epic &amp; by story</h2>
+<div class="charts">
+  <div class="chart"><h3>Cost per epic</h3><div class="bar-row"><div class="bar-lbl">Cross-epic foreground (main loop)</div>
+      <div class="bar-track"><div class="bar-fill" style="width:100.0%;background:#8b5cf6"></div></div>
+      <div class="bar-val">$63.21 · R1,046.57</div></div><div class="bar-row"><div class="bar-lbl">E2</div>
+      <div class="bar-track"><div class="bar-fill" style="width:63.7%;background:#f97316"></div></div>
+      <div class="bar-val">$40.29 · R667.11</div></div><div class="bar-row"><div class="bar-lbl">E1</div>
+      <div class="bar-track"><div class="bar-fill" style="width:39.2%;background:#ef4444"></div></div>
+      <div class="bar-val">$24.78 · R410.28</div></div><div class="bar-row"><div class="bar-lbl">E4</div>
+      <div class="bar-track"><div class="bar-fill" style="width:33.1%;background:#22c55e"></div></div>
+      <div class="bar-val">$20.89 · R345.95</div></div><div class="bar-row"><div class="bar-lbl">E3</div>
+      <div class="bar-track"><div class="bar-fill" style="width:21.1%;background:#eab308"></div></div>
+      <div class="bar-val">$13.34 · R220.95</div></div><div class="bar-row"><div class="bar-lbl">PLAN/INTAKE</div>
+      <div class="bar-track"><div class="bar-fill" style="width:8.1%;background:#0ea5e9"></div></div>
+      <div class="bar-val">$5.13 · R84.90</div></div></div>
+  <div class="chart"><h3>Cost per story (top 14)</h3><div class="bar-row"><div class="bar-lbl">E2 · Story 1</div>
+      <div class="bar-track"><div class="bar-fill" style="width:100.0%;background:#64748b"></div></div>
+      <div class="bar-val">$15.88 · R262.91</div></div><div class="bar-row"><div class="bar-lbl">E2 · Story 2</div>
+      <div class="bar-track"><div class="bar-fill" style="width:54.8%;background:#64748b"></div></div>
+      <div class="bar-val">$8.71 · R144.19</div></div><div class="bar-row"><div class="bar-lbl">E2 · Story 3</div>
+      <div class="bar-track"><div class="bar-fill" style="width:52.2%;background:#64748b"></div></div>
+      <div class="bar-val">$8.28 · R137.18</div></div><div class="bar-row"><div class="bar-lbl">E1 · Story 5</div>
+      <div class="bar-track"><div class="bar-fill" style="width:46.8%;background:#64748b"></div></div>
+      <div class="bar-val">$7.43 · R123.06</div></div><div class="bar-row"><div class="bar-lbl">E2 · Story 4</div>
+      <div class="bar-track"><div class="bar-fill" style="width:42.6%;background:#64748b"></div></div>
+      <div class="bar-val">$6.76 · R111.98</div></div><div class="bar-row"><div class="bar-lbl">E4 · Story 1</div>
+      <div class="bar-track"><div class="bar-fill" style="width:42.4%;background:#64748b"></div></div>
+      <div class="bar-val">$6.74 · R111.55</div></div><div class="bar-row"><div class="bar-lbl">E1 · Story 4</div>
+      <div class="bar-track"><div class="bar-fill" style="width:33.6%;background:#64748b"></div></div>
+      <div class="bar-val">$5.34 · R88.46</div></div><div class="bar-row"><div class="bar-lbl">PLAN/INTAKE · (no story)</div>
+      <div class="bar-track"><div class="bar-fill" style="width:32.3%;background:#0ea5e9"></div></div>
+      <div class="bar-val">$5.13 · R84.90</div></div><div class="bar-row"><div class="bar-lbl">E3 · Story 2</div>
+      <div class="bar-track"><div class="bar-fill" style="width:32.0%;background:#64748b"></div></div>
+      <div class="bar-val">$5.09 · R84.24</div></div><div class="bar-row"><div class="bar-lbl">E4 · Story 2</div>
+      <div class="bar-track"><div class="bar-fill" style="width:30.3%;background:#64748b"></div></div>
+      <div class="bar-val">$4.81 · R79.60</div></div><div class="bar-row"><div class="bar-lbl">E4 · Story 3</div>
+      <div class="bar-track"><div class="bar-fill" style="width:30.2%;background:#64748b"></div></div>
+      <div class="bar-val">$4.80 · R79.53</div></div><div class="bar-row"><div class="bar-lbl">E4 · Story 4</div>
+      <div class="bar-track"><div class="bar-fill" style="width:28.6%;background:#64748b"></div></div>
+      <div class="bar-val">$4.55 · R75.27</div></div><div class="bar-row"><div class="bar-lbl">E3 · Story 3</div>
+      <div class="bar-track"><div class="bar-fill" style="width:27.4%;background:#64748b"></div></div>
+      <div class="bar-val">$4.36 · R72.13</div></div><div class="bar-row"><div class="bar-lbl">E1 · Story 3</div>
+      <div class="bar-track"><div class="bar-fill" style="width:27.3%;background:#64748b"></div></div>
+      <div class="bar-val">$4.33 · R71.70</div></div></div>
+</div>
+
+<h2>Time vs cost by epic / phase</h2>
+<p class="sub">Active wall-clock excludes manual-QA waits (which cost nothing). PLAN active time is from the timing event log; per-epic windows are derived from each epic's sub-agent timestamps (wall-clock span, includes some idle).</p>
+<div class="wrap"><table><thead><tr><th>Phase / Epic</th><th>Duration</th><th>Cost (USD)</th><th>Cost (ZAR)</th><th>Cost / active min</th></tr></thead><tbody><tr><td>PLAN / INTAKE</td><td>1h 3m 53s <span class="muted">(active, timing log)</span></td><td>$5.13</td><td>R84.90</td><td>$0.08 / min</td></tr><tr><td>E1</td><td>18h 32m 50s <span class="muted">(wall-clock window)</span></td><td>$24.78</td><td>R410.28</td><td>$0.02 / min</td></tr><tr><td>E2</td><td>5h 24m 36s <span class="muted">(wall-clock window)</span></td><td>$40.29</td><td>R667.11</td><td>$0.12 / min</td></tr><tr><td>E3</td><td>1h 5m 47s <span class="muted">(wall-clock window)</span></td><td>$13.34</td><td>R220.95</td><td>$0.20 / min</td></tr><tr><td>E4</td><td>19h 13m 30s <span class="muted">(wall-clock window)</span></td><td>$20.89</td><td>R345.95</td><td>$0.02 / min</td></tr><tr><td>Cross-epic foreground (main loop)</td><td><span class="muted">spans whole build</span></td><td>$63.21</td><td>R1,046.57</td><td>—</td></tr></tbody></table></div>
+
+<h2>Full breakdown — sub-agents by epic &amp; story</h2>
+<div class="wrap"><table><thead><tr><th>Agent</th><th>Model</th><th>Time window</th><th>Duration</th><th>Token mix</th><th>Cost</th></tr></thead><tbody><tr class="epic-row"><td colspan="6"><b>PLAN/INTAKE</b> — $5.13 · R84.90 · 4,814,526 tok</td></tr><tr class="story-row"><td colspan="6">↳ <b>PLAN/INTAKE · (no story)</b> — $5.13 · R84.90 · 10 agent(s)</td></tr><tr><td class="ag">claude-code-guide<br><span class="muted">ac3c3e24032e</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-09 06:13:03Z<br>→ 2026-06-09 06:13:26Z</td>
+        <td>25s</td>
+        <td class="mono small">199 in / 746 out / 19,807 cw5m / 0 cw1h / 39,041 cr</td>
+        <td class="num">$0.03<br><span class="muted">R0.54</span></td></tr><tr><td class="ag">api-connectivity-agent<br><span class="muted">a6fec8cb38a6</span></td>
+        <td>Sonnet 4.6</td>
+        <td class="mono">2026-06-09 10:01:32Z<br>→ 2026-06-09 10:02:30Z</td>
+        <td>1m 4s</td>
+        <td class="mono small">2,742 in / 1,663 out / 35,955 cw5m / 0 cw1h / 86,138 cr</td>
+        <td class="num">$0.19<br><span class="muted">R3.21</span></td></tr><tr><td class="ag">api-connectivity-agent<br><span class="muted">af7f5e3cee95</span></td>
+        <td>Sonnet 4.6</td>
+        <td class="mono">2026-06-09 10:04:01Z<br>→ 2026-06-09 10:06:26Z</td>
+        <td>2m 30s</td>
+        <td class="mono small">2,699 in / 2,053 out / 32,644 cw5m / 0 cw1h / 598,409 cr</td>
+        <td class="num">$0.34<br><span class="muted">R5.64</span></td></tr><tr><td class="ag">intake-agent<br><span class="muted">a5963a82641e</span></td>
+        <td>Sonnet 4.6</td>
+        <td class="mono">2026-06-09 10:07:09Z<br>→ 2026-06-09 10:11:43Z</td>
+        <td>4m 38s</td>
+        <td class="mono small">17 in / 1,347 out / 70,897 cw5m / 0 cw1h / 765,180 cr</td>
+        <td class="num">$0.52<br><span class="muted">R8.54</span></td></tr><tr><td class="ag">feature-planner<br><span class="muted">a97c7412dcef</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 10:14:38Z<br>→ 2026-06-09 10:15:50Z</td>
+        <td>1m 18s</td>
+        <td class="mono small">2,102 in / 17 out / 36,288 cw5m / 0 cw1h / 150,704 cr</td>
+        <td class="num">$0.31<br><span class="muted">R5.18</span></td></tr><tr><td class="ag">feature-planner<br><span class="muted">a61967016fcd</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 10:18:21Z<br>→ 2026-06-09 10:20:00Z</td>
+        <td>1m 43s</td>
+        <td class="mono small">3,379 in / 6,257 out / 28,985 cw5m / 0 cw1h / 139,791 cr</td>
+        <td class="num">$0.42<br><span class="muted">R7.03</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">ac003da37bac</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 10:49:01Z<br>→ 2026-06-09 10:53:11Z</td>
+        <td>4m 14s</td>
+        <td class="mono small">147 in / 6,023 out / 72,283 cw5m / 0 cw1h / 1,017,932 cr</td>
+        <td class="num">$1.11<br><span class="muted">R18.41</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a63ec24d5224</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 11:01:19Z<br>→ 2026-06-09 11:05:05Z</td>
+        <td>3m 51s</td>
+        <td class="mono small">14,776 in / 3,426 out / 67,648 cw5m / 0 cw1h / 620,750 cr</td>
+        <td class="num">$0.89<br><span class="muted">R14.78</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a6d887df9265</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 11:16:13Z<br>→ 2026-06-09 11:18:53Z</td>
+        <td>2m 46s</td>
+        <td class="mono small">131 in / 1,107 out / 58,053 cw5m / 0 cw1h / 411,090 cr</td>
+        <td class="num">$0.60<br><span class="muted">R9.88</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a841aca7bdee</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 11:23:16Z<br>→ 2026-06-09 11:27:30Z</td>
+        <td>4m 19s</td>
+        <td class="mono small">9,049 in / 2,345 out / 60,990 cw5m / 0 cw1h / 441,716 cr</td>
+        <td class="num">$0.71<br><span class="muted">R11.69</span></td></tr><tr class="epic-row"><td colspan="6"><b>E1</b> — $24.78 · R410.28 · 29,003,017 tok · window 2026-06-09 10:22:43Z → 2026-06-10 04:55:33Z (18h 32m 50s wall-clock)</td></tr><tr class="story-row"><td colspan="6">↳ <b>E1 · (no story)</b> — $0.74 · R12.22 · 2 agent(s)</td></tr><tr><td class="ag">feature-planner<br><span class="muted">a2315db1d711</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 10:22:43Z<br>→ 2026-06-09 10:23:29Z</td>
+        <td>51s</td>
+        <td class="mono small">122 in / 2,707 out / 27,647 cw5m / 0 cw1h / 84,950 cr</td>
+        <td class="num">$0.28<br><span class="muted">R4.69</span></td></tr><tr><td class="ag">feature-planner<br><span class="muted">a807493d3f98</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 10:43:58Z<br>→ 2026-06-09 10:45:30Z</td>
+        <td>1m 36s</td>
+        <td class="mono small">92 in / 5,548 out / 43,293 cw5m / 0 cw1h / 88,973 cr</td>
+        <td class="num">$0.45<br><span class="muted">R7.52</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E1 · Story 1</b> — $3.40 · R56.37 · 6 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a0735023c228</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 10:49:08Z<br>→ 2026-06-09 10:50:01Z</td>
+        <td>58s</td>
+        <td class="mono small">123 in / 674 out / 17,280 cw5m / 0 cw1h / 128,359 cr</td>
+        <td class="num">$0.19<br><span class="muted">R3.14</span></td></tr><tr><td class="ag">developer<br><span class="muted">a30dd1662916</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 10:53:43Z<br>→ 2026-06-09 11:00:59Z</td>
+        <td>7m 19s</td>
+        <td class="mono small">227 in / 3,170 out / 83,870 cw5m / 0 cw1h / 2,363,543 cr</td>
+        <td class="num">$1.79<br><span class="muted">R29.58</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a8e93f175986</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-09 11:01:11Z<br>→ 2026-06-09 11:01:14Z</td>
+        <td>7s</td>
+        <td class="mono small">8 in / 36 out / 11,555 cw5m / 0 cw1h / 11,363 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.26</span></td></tr><tr><td class="ag">developer<br><span class="muted">ac71bb1efe94</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 11:05:32Z<br>→ 2026-06-09 11:09:37Z</td>
+        <td>4m 8s</td>
+        <td class="mono small">195 in / 1,717 out / 64,392 cw5m / 0 cw1h / 1,077,927 cr</td>
+        <td class="num">$0.99<br><span class="muted">R16.31</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a6841d524e98</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-09 11:09:50Z<br>→ 2026-06-09 11:10:05Z</td>
+        <td>19s</td>
+        <td class="mono small">28 in / 39 out / 12,560 cw5m / 0 cw1h / 47,817 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.34</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a23cddff4915</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 11:10:00Z<br>→ 2026-06-09 11:11:32Z</td>
+        <td>1m 38s</td>
+        <td class="mono small">171 in / 1,373 out / 45,332 cw5m / 0 cw1h / 176,499 cr</td>
+        <td class="num">$0.41<br><span class="muted">R6.73</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E1 · Story 2</b> — $3.53 · R58.47 · 10 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a75063c43cd3</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 11:16:18Z<br>→ 2026-06-09 11:18:44Z</td>
+        <td>2m 30s</td>
+        <td class="mono small">170 in / 3,882 out / 41,281 cw5m / 0 cw1h / 425,490 cr</td>
+        <td class="num">$0.57<br><span class="muted">R9.42</span></td></tr><tr><td class="ag">developer<br><span class="muted">a667635f1de4</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 11:19:19Z<br>→ 2026-06-09 11:22:54Z</td>
+        <td>3m 39s</td>
+        <td class="mono small">180 in / 1,125 out / 64,682 cw5m / 0 cw1h / 713,847 cr</td>
+        <td class="num">$0.79<br><span class="muted">R13.08</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">aa26708fc005</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-09 11:23:09Z<br>→ 2026-06-09 11:23:53Z</td>
+        <td>49s</td>
+        <td class="mono small">8 in / 1,291 out / 12,800 cw5m / 0 cw1h / 11,390 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.39</span></td></tr><tr><td class="ag">developer<br><span class="muted">a696e4bbc3f8</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 11:28:00Z<br>→ 2026-06-09 11:30:03Z</td>
+        <td>2m 8s</td>
+        <td class="mono small">168 in / 6,197 out / 33,934 cw5m / 0 cw1h / 195,187 cr</td>
+        <td class="num">$0.47<br><span class="muted">R7.71</span></td></tr><tr><td class="ag">?<br><span class="muted">af2b889578a3</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-09 11:40:40Z<br>→ 2026-06-09 12:57:46Z</td>
+        <td>1h 17m 6s</td>
+        <td class="mono small">58 in / 339 out / 195,045 cw5m / 0 cw1h / 1,078,816 cr</td>
+        <td class="num">$0.35<br><span class="muted">R5.85</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a3ff162b6a76</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-09 11:40:47Z<br>→ 2026-06-09 11:43:54Z</td>
+        <td>3m 11s</td>
+        <td class="mono small">184 in / 458 out / 32,255 cw5m / 0 cw1h / 378,267 cr</td>
+        <td class="num">$0.40<br><span class="muted">R6.67</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a46ae6b730c9</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 02:28:25Z<br>→ 2026-06-10 03:05:31Z</td>
+        <td>37m 22s</td>
+        <td class="mono small">76 in / 1,964 out / 57,639 cw5m / 0 cw1h / 727,729 cr</td>
+        <td class="num">$0.15<br><span class="muted">R2.56</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">ac55f1c0e5ae</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 02:28:38Z<br>→ 2026-06-10 02:33:54Z</td>
+        <td>5m 33s</td>
+        <td class="mono small">388 in / 2,029 out / 50,277 cw5m / 0 cw1h / 201,862 cr</td>
+        <td class="num">$0.47<br><span class="muted">R7.75</span></td></tr><tr><td class="ag">developer<br><span class="muted">a4efae56109d</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:06:03Z<br>→ 2026-06-10 03:08:18Z</td>
+        <td>2m 19s</td>
+        <td class="mono small">168 in / 799 out / 29,758 cw5m / 0 cw1h / 178,502 cr</td>
+        <td class="num">$0.30<br><span class="muted">R4.90</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">aaf64008c6de</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 03:08:35Z<br>→ 2026-06-10 03:08:54Z</td>
+        <td>21s</td>
+        <td class="mono small">8 in / 66 out / 4,877 cw5m / 0 cw1h / 18,384 cr</td>
+        <td class="num">$0.01<br><span class="muted">R0.14</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E1 · Story 3</b> — $4.33 · R71.70 · 8 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a4ca3beeefbd</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:11:07Z<br>→ 2026-06-10 03:12:47Z</td>
+        <td>1m 46s</td>
+        <td class="mono small">1,327 in / 914 out / 41,428 cw5m / 0 cw1h / 283,021 cr</td>
+        <td class="num">$0.43<br><span class="muted">R7.12</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">adfbe17b0ed6</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:11:15Z<br>→ 2026-06-10 03:13:17Z</td>
+        <td>2m 5s</td>
+        <td class="mono small">131 in / 893 out / 36,773 cw5m / 0 cw1h / 358,289 cr</td>
+        <td class="num">$0.43<br><span class="muted">R7.15</span></td></tr><tr><td class="ag">developer<br><span class="muted">a6c6f2f41de5</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:13:43Z<br>→ 2026-06-10 03:21:45Z</td>
+        <td>8m 6s</td>
+        <td class="mono small">227 in / 7,273 out / 84,397 cw5m / 0 cw1h / 2,325,487 cr</td>
+        <td class="num">$1.87<br><span class="muted">R31.02</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">ae1b67d1fff3</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 03:21:56Z<br>→ 2026-06-10 03:24:43Z</td>
+        <td>2m 50s</td>
+        <td class="mono small">66 in / 847 out / 33,089 cw5m / 0 cw1h / 232,106 cr</td>
+        <td class="num">$0.07<br><span class="muted">R1.14</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">adf85115da82</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:22:06Z<br>→ 2026-06-10 03:25:37Z</td>
+        <td>3m 35s</td>
+        <td class="mono small">1,432 in / 3,537 out / 63,209 cw5m / 0 cw1h / 292,631 cr</td>
+        <td class="num">$0.64<br><span class="muted">R10.55</span></td></tr><tr><td class="ag">developer<br><span class="muted">a0ea0aa4d011</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:40:39Z<br>→ 2026-06-10 03:43:40Z</td>
+        <td>3m 4s</td>
+        <td class="mono small">187 in / 1,968 out / 48,340 cw5m / 0 cw1h / 549,432 cr</td>
+        <td class="num">$0.63<br><span class="muted">R10.38</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">aece9625fad7</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 03:43:55Z<br>→ 2026-06-10 03:45:00Z</td>
+        <td>1m 11s</td>
+        <td class="mono small">48 in / 215 out / 13,983 cw5m / 0 cw1h / 89,954 cr</td>
+        <td class="num">$0.03<br><span class="muted">R0.46</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a9f2c93e002f</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:44:06Z<br>→ 2026-06-10 03:45:56Z</td>
+        <td>1m 56s</td>
+        <td class="mono small">1,113 in / 1,456 out / 24,459 cw5m / 0 cw1h / 79,834 cr</td>
+        <td class="num">$0.23<br><span class="muted">R3.89</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E1 · Story 4</b> — $5.34 · R88.46 · 8 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a566e6bbdf08</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:48:17Z<br>→ 2026-06-10 03:55:22Z</td>
+        <td>7m 9s</td>
+        <td class="mono small">201 in / 2,442 out / 81,992 cw5m / 0 cw1h / 1,656,047 cr</td>
+        <td class="num">$1.40<br><span class="muted">R23.22</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a36608875037</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:48:28Z<br>→ 2026-06-10 03:50:20Z</td>
+        <td>1m 57s</td>
+        <td class="mono small">603 in / 1,180 out / 39,897 cw5m / 0 cw1h / 317,198 cr</td>
+        <td class="num">$0.44<br><span class="muted">R7.29</span></td></tr><tr><td class="ag">developer<br><span class="muted">a1ed4214339e</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 03:56:14Z<br>→ 2026-06-10 04:04:25Z</td>
+        <td>8m 14s</td>
+        <td class="mono small">1,595 in / 2,485 out / 91,156 cw5m / 0 cw1h / 2,228,322 cr</td>
+        <td class="num">$1.75<br><span class="muted">R29.04</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a3ee520bf4aa</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 04:04:36Z<br>→ 2026-06-10 04:05:16Z</td>
+        <td>42s</td>
+        <td class="mono small">28 in / 494 out / 13,271 cw5m / 0 cw1h / 48,805 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.40</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a7b5a76be772</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:04:51Z<br>→ 2026-06-10 04:07:09Z</td>
+        <td>2m 23s</td>
+        <td class="mono small">5,345 in / 2,834 out / 59,301 cw5m / 0 cw1h / 228,111 cr</td>
+        <td class="num">$0.58<br><span class="muted">R9.64</span></td></tr><tr><td class="ag">developer<br><span class="muted">a324611b746c</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:07:57Z<br>→ 2026-06-10 04:14:44Z</td>
+        <td>6m 50s</td>
+        <td class="mono small">196 in / 1,614 out / 49,979 cw5m / 0 cw1h / 885,597 cr</td>
+        <td class="num">$0.80<br><span class="muted">R13.19</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a2926778e9a5</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 04:14:58Z<br>→ 2026-06-10 04:15:31Z</td>
+        <td>35s</td>
+        <td class="mono small">28 in / 265 out / 12,794 cw5m / 0 cw1h / 48,524 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.37</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">ad2aa456b721</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:15:07Z<br>→ 2026-06-10 04:17:00Z</td>
+        <td>1m 56s</td>
+        <td class="mono small">168 in / 1,628 out / 32,157 cw5m / 0 cw1h / 156,778 cr</td>
+        <td class="num">$0.32<br><span class="muted">R5.31</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E1 · Story 5</b> — $7.43 · R123.06 · 8 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">acf88d3e5a49</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:18:39Z<br>→ 2026-06-10 04:22:24Z</td>
+        <td>3m 49s</td>
+        <td class="mono small">147 in / 1,478 out / 64,300 cw5m / 0 cw1h / 977,352 cr</td>
+        <td class="num">$0.93<br><span class="muted">R15.37</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a76a929da4f0</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:18:51Z<br>→ 2026-06-10 04:21:09Z</td>
+        <td>2m 21s</td>
+        <td class="mono small">1,331 in / 1,198 out / 35,167 cw5m / 0 cw1h / 387,114 cr</td>
+        <td class="num">$0.45<br><span class="muted">R7.45</span></td></tr><tr><td class="ag">developer<br><span class="muted">a257cc37cd8c</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:23:38Z<br>→ 2026-06-10 04:41:31Z</td>
+        <td>17m 56s</td>
+        <td class="mono small">3,662 in / 4,603 out / 149,793 cw5m / 0 cw1h / 6,423,214 cr</td>
+        <td class="num">$4.28<br><span class="muted">R70.89</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a8046b9ab693</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 04:41:48Z<br>→ 2026-06-10 04:41:53Z</td>
+        <td>8s</td>
+        <td class="mono small">8 in / 130 out / 11,822 cw5m / 0 cw1h / 11,564 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.27</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a1a801a1ffcc</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:42:05Z<br>→ 2026-06-10 04:45:00Z</td>
+        <td>3m 0s</td>
+        <td class="mono small">173 in / 2,271 out / 50,801 cw5m / 0 cw1h / 334,535 cr</td>
+        <td class="num">$0.54<br><span class="muted">R8.98</span></td></tr><tr><td class="ag">developer<br><span class="muted">a89a1994405a</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:45:41Z<br>→ 2026-06-10 04:53:08Z</td>
+        <td>7m 30s</td>
+        <td class="mono small">203 in / 1,576 out / 55,704 cw5m / 0 cw1h / 1,008,217 cr</td>
+        <td class="num">$0.89<br><span class="muted">R14.78</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">acd9f181973b</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 04:53:21Z<br>→ 2026-06-10 04:53:53Z</td>
+        <td>35s</td>
+        <td class="mono small">8 in / 50 out / 11,853 cw5m / 0 cw1h / 11,566 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.27</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a941787f88e4</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:53:32Z<br>→ 2026-06-10 04:55:33Z</td>
+        <td>2m 5s</td>
+        <td class="mono small">165 in / 2,653 out / 30,208 cw5m / 0 cw1h / 97,880 cr</td>
+        <td class="num">$0.30<br><span class="muted">R5.05</span></td></tr><tr class="epic-row"><td colspan="6"><b>E2</b> — $40.29 · R667.11 · 49,899,944 tok · window 2026-06-10 04:59:06Z → 2026-06-10 10:23:42Z (5h 24m 36s wall-clock)</td></tr><tr class="story-row"><td colspan="6">↳ <b>E2 · (no story)</b> — $0.66 · R10.85 · 1 agent(s)</td></tr><tr><td class="ag">feature-planner<br><span class="muted">aa9533ab2409</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 04:59:06Z<br>→ 2026-06-10 05:00:52Z</td>
+        <td>1m 50s</td>
+        <td class="mono small">94 in / 6,530 out / 65,353 cw5m / 0 cw1h / 166,050 cr</td>
+        <td class="num">$0.66<br><span class="muted">R10.85</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E2 · Story 1</b> — $15.88 · R262.91 · 12 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a5d70c1cd1d7</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 05:05:57Z<br>→ 2026-06-10 05:12:08Z</td>
+        <td>6m 16s</td>
+        <td class="mono small">156 in / 9,528 out / 92,482 cw5m / 0 cw1h / 1,661,587 cr</td>
+        <td class="num">$1.65<br><span class="muted">R27.28</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a84248835fdd</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 05:06:12Z<br>→ 2026-06-10 05:10:41Z</td>
+        <td>4m 34s</td>
+        <td class="mono small">172 in / 475 out / 66,975 cw5m / 0 cw1h / 1,015,703 cr</td>
+        <td class="num">$0.94<br><span class="muted">R15.55</span></td></tr><tr><td class="ag">developer<br><span class="muted">a27511b652be</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 05:12:49Z<br>→ 2026-06-10 05:23:23Z</td>
+        <td>10m 38s</td>
+        <td class="mono small">228 in / 4,005 out / 148,394 cw5m / 0 cw1h / 4,365,689 cr</td>
+        <td class="num">$3.21<br><span class="muted">R53.18</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">ab2b87ea51cc</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 05:23:38Z<br>→ 2026-06-10 05:24:45Z</td>
+        <td>1m 10s</td>
+        <td class="mono small">8 in / 1,846 out / 13,652 cw5m / 0 cw1h / 11,526 cr</td>
+        <td class="num">$0.03<br><span class="muted">R0.45</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a9d199ef7774</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 05:24:03Z<br>→ 2026-06-10 05:28:45Z</td>
+        <td>4m 47s</td>
+        <td class="mono small">3,935 in / 2,800 out / 83,206 cw5m / 0 cw1h / 874,566 cr</td>
+        <td class="num">$1.05<br><span class="muted">R17.34</span></td></tr><tr><td class="ag">developer<br><span class="muted">a860186921ba</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 05:30:19Z<br>→ 2026-06-10 05:43:17Z</td>
+        <td>13m 3s</td>
+        <td class="mono small">884 in / 2,315 out / 123,018 cw5m / 0 cw1h / 2,884,161 cr</td>
+        <td class="num">$2.27<br><span class="muted">R37.64</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">af425a1250d2</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 05:43:30Z<br>→ 2026-06-10 05:44:15Z</td>
+        <td>48s</td>
+        <td class="mono small">8 in / 235 out / 12,137 cw5m / 0 cw1h / 11,544 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.29</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a79cc11417c0</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 05:43:54Z<br>→ 2026-06-10 05:48:29Z</td>
+        <td>4m 48s</td>
+        <td class="mono small">8,653 in / 2,947 out / 67,858 cw5m / 0 cw1h / 817,551 cr</td>
+        <td class="num">$0.95<br><span class="muted">R15.73</span></td></tr><tr><td class="ag">developer<br><span class="muted">ab33e56a3aa9</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 05:52:11Z<br>→ 2026-06-10 06:26:19Z</td>
+        <td>34m 13s</td>
+        <td class="mono small">324 in / 8,805 out / 136,767 cw5m / 0 cw1h / 8,280,253 cr</td>
+        <td class="num">$5.22<br><span class="muted">R86.38</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a51e796bdc59</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 06:26:43Z<br>→ 2026-06-10 06:27:11Z</td>
+        <td>32s</td>
+        <td class="mono small">8 in / 4 out / 11,829 cw5m / 0 cw1h / 11,545 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.26</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a14c984c5686</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 06:26:56Z<br>→ 2026-06-10 06:30:43Z</td>
+        <td>3m 52s</td>
+        <td class="mono small">178 in / 2,394 out / 38,098 cw5m / 0 cw1h / 435,076 cr</td>
+        <td class="num">$0.52<br><span class="muted">R8.55</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">aea063e2c083</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 06:44:19Z<br>→ 2026-06-10 06:44:51Z</td>
+        <td>35s</td>
+        <td class="mono small">8 in / 50 out / 11,772 cw5m / 0 cw1h / 11,490 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.27</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E2 · Story 2</b> — $8.71 · R144.19 · 9 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">ab94a701871b</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 06:47:07Z<br>→ 2026-06-10 06:51:24Z</td>
+        <td>4m 21s</td>
+        <td class="mono small">1,951 in / 3,135 out / 101,116 cw5m / 0 cw1h / 1,342,108 cr</td>
+        <td class="num">$1.39<br><span class="muted">R23.03</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a471605bd7e0</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 06:47:21Z<br>→ 2026-06-10 06:50:09Z</td>
+        <td>2m 53s</td>
+        <td class="mono small">132 in / 1,488 out / 35,473 cw5m / 0 cw1h / 412,964 cr</td>
+        <td class="num">$0.47<br><span class="muted">R7.72</span></td></tr><tr><td class="ag">developer<br><span class="muted">ae7ea4ddb716</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 06:52:12Z<br>→ 2026-06-10 07:18:32Z</td>
+        <td>26m 25s</td>
+        <td class="mono small">3,353 in / 3,704 out / 176,962 cw5m / 0 cw1h / 6,265,299 cr</td>
+        <td class="num">$4.35<br><span class="muted">R71.99</span></td></tr><tr><td class="ag">developer<br><span class="muted">a869b8d7f091</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 07:19:30Z<br>→ 2026-06-10 07:25:27Z</td>
+        <td>6m 1s</td>
+        <td class="mono small">185 in / 1,316 out / 55,985 cw5m / 0 cw1h / 912,306 cr</td>
+        <td class="num">$0.84<br><span class="muted">R13.91</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">abc9383aa184</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 07:25:41Z<br>→ 2026-06-10 07:25:46Z</td>
+        <td>7s</td>
+        <td class="mono small">8 in / 96 out / 11,765 cw5m / 0 cw1h / 11,544 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.27</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">af947f56652e</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 07:25:58Z<br>→ 2026-06-10 07:29:32Z</td>
+        <td>3m 38s</td>
+        <td class="mono small">9,978 in / 284 out / 82,552 cw5m / 0 cw1h / 773,660 cr</td>
+        <td class="num">$0.96<br><span class="muted">R15.89</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a086b8b3dc5a</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 07:30:49Z<br>→ 2026-06-10 07:31:29Z</td>
+        <td>43s</td>
+        <td class="mono small">8 in / 718 out / 5,383 cw5m / 0 cw1h / 18,448 cr</td>
+        <td class="num">$0.01<br><span class="muted">R0.20</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a2bd0819773c</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 07:32:29Z<br>→ 2026-06-10 07:32:41Z</td>
+        <td>16s</td>
+        <td class="mono small">22 in / 94 out / 5,822 cw5m / 0 cw1h / 42,927 cr</td>
+        <td class="num">$0.01<br><span class="muted">R0.20</span></td></tr><tr><td class="ag">developer<br><span class="muted">a67fcbd8482e</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 07:34:42Z<br>→ 2026-06-10 07:38:02Z</td>
+        <td>3m 24s</td>
+        <td class="mono small">175 in / 6,099 out / 44,088 cw5m / 0 cw1h / 467,827 cr</td>
+        <td class="num">$0.66<br><span class="muted">R10.97</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E2 · Story 3</b> — $8.28 · R137.18 · 7 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a4ca5f9c43f2</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 07:40:48Z<br>→ 2026-06-10 07:45:46Z</td>
+        <td>5m 2s</td>
+        <td class="mono small">1,368 in / 1,430 out / 79,429 cw5m / 0 cw1h / 1,149,807 cr</td>
+        <td class="num">$1.11<br><span class="muted">R18.44</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">aaf43f07fd7b</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 07:41:11Z<br>→ 2026-06-10 07:43:58Z</td>
+        <td>2m 52s</td>
+        <td class="mono small">169 in / 1,358 out / 57,781 cw5m / 0 cw1h / 586,572 cr</td>
+        <td class="num">$0.69<br><span class="muted">R11.41</span></td></tr><tr><td class="ag">developer<br><span class="muted">aa1345f90b0d</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 07:46:35Z<br>→ 2026-06-10 08:02:10Z</td>
+        <td>15m 39s</td>
+        <td class="mono small">6,426 in / 4,175 out / 146,478 cw5m / 0 cw1h / 5,278,512 cr</td>
+        <td class="num">$3.69<br><span class="muted">R61.12</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a59bc4d2eae9</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 08:02:36Z<br>→ 2026-06-10 08:03:13Z</td>
+        <td>41s</td>
+        <td class="mono small">8 in / 67 out / 11,961 cw5m / 0 cw1h / 11,673 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.27</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a0d6a8b75fb7</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 08:03:11Z<br>→ 2026-06-10 08:06:32Z</td>
+        <td>3m 31s</td>
+        <td class="mono small">28 in / 3,945 out / 65,198 cw5m / 0 cw1h / 699,321 cr</td>
+        <td class="num">$0.86<br><span class="muted">R14.17</span></td></tr><tr><td class="ag">developer<br><span class="muted">a38efc4791c3</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 08:07:03Z<br>→ 2026-06-10 08:14:42Z</td>
+        <td>7m 43s</td>
+        <td class="mono small">198 in / 1,452 out / 71,200 cw5m / 0 cw1h / 1,205,728 cr</td>
+        <td class="num">$1.09<br><span class="muted">R17.97</span></td></tr><tr><td class="ag">feature-planner<br><span class="muted">a735d4789758</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 08:52:53Z<br>→ 2026-06-10 08:55:11Z</td>
+        <td>2m 22s</td>
+        <td class="mono small">102 in / 5,723 out / 74,583 cw5m / 0 cw1h / 446,235 cr</td>
+        <td class="num">$0.83<br><span class="muted">R13.79</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E2 · Story 4</b> — $6.76 · R111.98 · 6 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a14cc241029e</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 08:17:38Z<br>→ 2026-06-10 08:23:59Z</td>
+        <td>6m 26s</td>
+        <td class="mono small">168 in / 2,875 out / 86,144 cw5m / 0 cw1h / 2,238,367 cr</td>
+        <td class="num">$1.73<br><span class="muted">R28.65</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a41708d0dae0</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 08:17:56Z<br>→ 2026-06-10 08:20:22Z</td>
+        <td>2m 30s</td>
+        <td class="mono small">120 in / 1,021 out / 47,822 cw5m / 0 cw1h / 264,887 cr</td>
+        <td class="num">$0.46<br><span class="muted">R7.57</span></td></tr><tr><td class="ag">developer<br><span class="muted">a50085236e3e</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 08:24:57Z<br>→ 2026-06-10 08:41:10Z</td>
+        <td>16m 17s</td>
+        <td class="mono small">895 in / 4,146 out / 141,494 cw5m / 0 cw1h / 3,724,249 cr</td>
+        <td class="num">$2.85<br><span class="muted">R47.27</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a3aa7cd1ad11</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 08:41:33Z<br>→ 2026-06-10 08:42:47Z</td>
+        <td>1m 17s</td>
+        <td class="mono small">22 in / 4 out / 13,027 cw5m / 0 cw1h / 36,330 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.33</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">abce59631522</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 08:41:51Z<br>→ 2026-06-10 08:47:28Z</td>
+        <td>5m 41s</td>
+        <td class="mono small">173 in / 3,077 out / 86,894 cw5m / 0 cw1h / 733,240 cr</td>
+        <td class="num">$0.99<br><span class="muted">R16.35</span></td></tr><tr><td class="ag">feature-planner<br><span class="muted">a931e4567701</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 10:22:00Z<br>→ 2026-06-10 10:23:42Z</td>
+        <td>1m 47s</td>
+        <td class="mono small">96 in / 5,623 out / 71,309 cw5m / 0 cw1h / 253,187 cr</td>
+        <td class="num">$0.71<br><span class="muted">R11.81</span></td></tr><tr class="epic-row"><td colspan="6"><b>E3</b> — $13.34 · R220.95 · 14,389,634 tok · window 2026-06-10 09:07:48Z → 2026-06-10 10:13:35Z (1h 5m 47s wall-clock)</td></tr><tr class="story-row"><td colspan="6">↳ <b>E3 · Story 1</b> — $3.90 · R64.58 · 5 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">ad3d300a42ca</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:07:48Z<br>→ 2026-06-10 09:11:33Z</td>
+        <td>3m 50s</td>
+        <td class="mono small">17,181 in / 1,621 out / 86,750 cw5m / 0 cw1h / 842,785 cr</td>
+        <td class="num">$1.09<br><span class="muted">R18.05</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a6a5d443be59</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:08:02Z<br>→ 2026-06-10 09:10:24Z</td>
+        <td>2m 27s</td>
+        <td class="mono small">3,415 in / 1,191 out / 49,816 cw5m / 0 cw1h / 333,986 cr</td>
+        <td class="num">$0.53<br><span class="muted">R8.70</span></td></tr><tr><td class="ag">developer<br><span class="muted">a9910aae1181</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:12:12Z<br>→ 2026-06-10 09:17:04Z</td>
+        <td>4m 56s</td>
+        <td class="mono small">188 in / 1,369 out / 102,376 cw5m / 0 cw1h / 1,504,531 cr</td>
+        <td class="num">$1.43<br><span class="muted">R23.63</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a8f08a9f1683</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 09:17:19Z<br>→ 2026-06-10 09:17:53Z</td>
+        <td>37s</td>
+        <td class="mono small">8 in / 48 out / 11,856 cw5m / 0 cw1h / 11,570 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.27</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">ac17242a40de</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:17:44Z<br>→ 2026-06-10 09:21:15Z</td>
+        <td>3m 39s</td>
+        <td class="mono small">4,031 in / 2,753 out / 59,700 cw5m / 0 cw1h / 759,215 cr</td>
+        <td class="num">$0.84<br><span class="muted">R13.94</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E3 · Story 2</b> — $5.09 · R84.24 · 5 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a731daf95a1d</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:23:22Z<br>→ 2026-06-10 09:28:32Z</td>
+        <td>5m 14s</td>
+        <td class="mono small">197 in / 2,272 out / 91,226 cw5m / 0 cw1h / 1,174,483 cr</td>
+        <td class="num">$1.22<br><span class="muted">R20.12</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">ac5015928d94</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:23:39Z<br>→ 2026-06-10 09:27:36Z</td>
+        <td>4m 2s</td>
+        <td class="mono small">174 in / 5,840 out / 45,399 cw5m / 0 cw1h / 594,092 cr</td>
+        <td class="num">$0.73<br><span class="muted">R12.05</span></td></tr><tr><td class="ag">developer<br><span class="muted">abedf0f7ff80</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:29:10Z<br>→ 2026-06-10 09:44:22Z</td>
+        <td>15m 16s</td>
+        <td class="mono small">3,991 in / 1,557 out / 132,633 cw5m / 0 cw1h / 2,940,982 cr</td>
+        <td class="num">$2.36<br><span class="muted">R39.05</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">af2f1eeaf04b</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 09:44:40Z<br>→ 2026-06-10 09:45:16Z</td>
+        <td>39s</td>
+        <td class="mono small">15 in / 51 out / 12,305 cw5m / 0 cw1h / 23,611 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.30</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a4ef0383f8d2</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:44:56Z<br>→ 2026-06-10 09:48:16Z</td>
+        <td>3m 24s</td>
+        <td class="mono small">3,881 in / 2,162 out / 68,594 cw5m / 0 cw1h / 532,094 cr</td>
+        <td class="num">$0.77<br><span class="muted">R12.72</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E3 · Story 3</b> — $4.36 · R72.13 · 5 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a78d6fb745a4</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:50:21Z<br>→ 2026-06-10 09:54:45Z</td>
+        <td>4m 29s</td>
+        <td class="mono small">1,268 in / 1,792 out / 78,864 cw5m / 0 cw1h / 1,059,121 cr</td>
+        <td class="num">$1.07<br><span class="muted">R17.78</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">accd1dc403f1</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:50:32Z<br>→ 2026-06-10 09:52:51Z</td>
+        <td>2m 23s</td>
+        <td class="mono small">254 in / 1,049 out / 42,457 cw5m / 0 cw1h / 266,448 cr</td>
+        <td class="num">$0.43<br><span class="muted">R7.05</span></td></tr><tr><td class="ag">developer<br><span class="muted">a5679ae60241</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 09:55:24Z<br>→ 2026-06-10 10:06:36Z</td>
+        <td>11m 19s</td>
+        <td class="mono small">506 in / 1,575 out / 104,431 cw5m / 0 cw1h / 2,651,452 cr</td>
+        <td class="num">$2.02<br><span class="muted">R33.45</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">ab01b319dd92</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 10:07:03Z<br>→ 2026-06-10 10:07:33Z</td>
+        <td>35s</td>
+        <td class="mono small">8 in / 4 out / 11,848 cw5m / 0 cw1h / 11,564 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.26</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a242b4852bf4</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 10:07:31Z<br>→ 2026-06-10 10:13:35Z</td>
+        <td>6m 11s</td>
+        <td class="mono small">11,155 in / 3,481 out / 55,888 cw5m / 0 cw1h / 656,520 cr</td>
+        <td class="num">$0.82<br><span class="muted">R13.58</span></td></tr><tr class="epic-row"><td colspan="6"><b>E4</b> — $20.89 · R345.95 · 23,129,353 tok · window 2026-06-10 10:29:38Z → 2026-06-11 05:43:08Z (19h 13m 30s wall-clock)</td></tr><tr class="story-row"><td colspan="6">↳ <b>E4 · Story 1</b> — $6.74 · R111.55 · 5 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a1a2595fbc83</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 10:29:38Z<br>→ 2026-06-10 10:39:07Z</td>
+        <td>9m 33s</td>
+        <td class="mono small">1,544 in / 3,409 out / 85,822 cw5m / 0 cw1h / 2,083,097 cr</td>
+        <td class="num">$1.67<br><span class="muted">R27.67</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a37ac75e2629</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 10:29:53Z<br>→ 2026-06-10 10:32:13Z</td>
+        <td>2m 25s</td>
+        <td class="mono small">3,310 in / 1,151 out / 48,840 cw5m / 0 cw1h / 271,360 cr</td>
+        <td class="num">$0.49<br><span class="muted">R8.05</span></td></tr><tr><td class="ag">developer<br><span class="muted">a845c6914b9b</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 10:40:42Z<br>→ 2026-06-10 10:57:39Z</td>
+        <td>17m 1s</td>
+        <td class="mono small">2,463 in / 2,409 out / 142,417 cw5m / 0 cw1h / 5,000,265 cr</td>
+        <td class="num">$3.46<br><span class="muted">R57.34</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a6ea5d80399b</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 10:58:06Z<br>→ 2026-06-10 10:58:36Z</td>
+        <td>33s</td>
+        <td class="mono small">8 in / 48 out / 11,878 cw5m / 0 cw1h / 11,585 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.27</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">ae83166d2376</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 10:58:25Z<br>→ 2026-06-10 11:02:15Z</td>
+        <td>3m 56s</td>
+        <td class="mono small">4,263 in / 2,517 out / 96,488 cw5m / 0 cw1h / 826,898 cr</td>
+        <td class="num">$1.10<br><span class="muted">R18.23</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E4 · Story 2</b> — $4.81 · R79.60 · 6 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a809fd776fbf</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 11:05:27Z<br>→ 2026-06-10 11:09:34Z</td>
+        <td>4m 11s</td>
+        <td class="mono small">4,161 in / 1,584 out / 62,304 cw5m / 0 cw1h / 518,807 cr</td>
+        <td class="num">$0.71<br><span class="muted">R11.74</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a0953e32ccae</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 11:05:39Z<br>→ 2026-06-10 11:08:07Z</td>
+        <td>2m 33s</td>
+        <td class="mono small">132 in / 1,000 out / 51,366 cw5m / 0 cw1h / 385,011 cr</td>
+        <td class="num">$0.54<br><span class="muted">R8.93</span></td></tr><tr><td class="ag">developer<br><span class="muted">ae1077f55168</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 11:10:12Z<br>→ 2026-06-10 11:21:26Z</td>
+        <td>11m 18s</td>
+        <td class="mono small">10,259 in / 2,566 out / 90,827 cw5m / 0 cw1h / 2,056,618 cr</td>
+        <td class="num">$1.71<br><span class="muted">R28.34</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a756225236a2</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-10 11:21:47Z<br>→ 2026-06-10 11:22:38Z</td>
+        <td>58s</td>
+        <td class="mono small">8 in / 68 out / 11,903 cw5m / 0 cw1h / 11,635 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.27</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a71e3618cb6b</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-10 11:22:00Z<br>→ 2026-06-10 11:29:56Z</td>
+        <td>8m 4s</td>
+        <td class="mono small">9,754 in / 2,448 out / 71,168 cw5m / 0 cw1h / 834,040 cr</td>
+        <td class="num">$0.97<br><span class="muted">R16.09</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a2e7daccabb6</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 04:37:40Z<br>→ 2026-06-11 04:42:06Z</td>
+        <td>4m 29s</td>
+        <td class="mono small">767 in / 1,742 out / 80,049 cw5m / 0 cw1h / 623,140 cr</td>
+        <td class="num">$0.86<br><span class="muted">R14.23</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E4 · Story 3</b> — $4.80 · R79.53 · 7 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a4700e3985f6</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 04:44:44Z<br>→ 2026-06-11 04:52:11Z</td>
+        <td>7m 32s</td>
+        <td class="mono small">1,090 in / 1,463 out / 87,435 cw5m / 0 cw1h / 1,365,061 cr</td>
+        <td class="num">$1.27<br><span class="muted">R21.05</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">aad21a18a8d3</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 04:44:56Z<br>→ 2026-06-11 04:48:00Z</td>
+        <td>3m 10s</td>
+        <td class="mono small">130 in / 1,038 out / 56,322 cw5m / 0 cw1h / 325,852 cr</td>
+        <td class="num">$0.54<br><span class="muted">R8.97</span></td></tr><tr><td class="ag">developer<br><span class="muted">a52cb12a2d98</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 04:52:59Z<br>→ 2026-06-11 04:59:31Z</td>
+        <td>6m 36s</td>
+        <td class="mono small">200 in / 1,311 out / 92,507 cw5m / 0 cw1h / 1,526,763 cr</td>
+        <td class="num">$1.38<br><span class="muted">R22.77</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a811a52119f1</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-11 04:59:42Z<br>→ 2026-06-11 04:59:47Z</td>
+        <td>8s</td>
+        <td class="mono small">8 in / 193 out / 11,789 cw5m / 0 cw1h / 11,558 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.28</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a898e762f92e</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 04:59:53Z<br>→ 2026-06-11 05:10:27Z</td>
+        <td>10m 39s</td>
+        <td class="mono small">204 in / 3,505 out / 92,895 cw5m / 0 cw1h / 1,805,160 cr</td>
+        <td class="num">$1.57<br><span class="muted">R26.03</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a0e67c4d2027</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-11 05:11:06Z<br>→ 2026-06-11 05:11:10Z</td>
+        <td>6s</td>
+        <td class="mono small">8 in / 36 out / 11,894 cw5m / 0 cw1h / 11,689 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.27</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a975597a43a5</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-11 05:12:06Z<br>→ 2026-06-11 05:12:45Z</td>
+        <td>42s</td>
+        <td class="mono small">15 in / 49 out / 5,568 cw5m / 0 cw1h / 30,951 cr</td>
+        <td class="num">$0.01<br><span class="muted">R0.17</span></td></tr><tr class="story-row"><td colspan="6">↳ <b>E4 · Story 4</b> — $4.55 · R75.27 · 8 agent(s)</td></tr><tr><td class="ag">test-generator<br><span class="muted">a8556c106776</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 05:15:13Z<br>→ 2026-06-11 05:18:59Z</td>
+        <td>3m 50s</td>
+        <td class="mono small">212 in / 1,154 out / 69,977 cw5m / 0 cw1h / 772,251 cr</td>
+        <td class="num">$0.85<br><span class="muted">R14.13</span></td></tr><tr><td class="ag">test-generator<br><span class="muted">a1fa235f17fa</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 05:15:24Z<br>→ 2026-06-11 05:17:29Z</td>
+        <td>2m 12s</td>
+        <td class="mono small">130 in / 851 out / 40,003 cw5m / 0 cw1h / 282,251 cr</td>
+        <td class="num">$0.41<br><span class="muted">R6.84</span></td></tr><tr><td class="ag">developer<br><span class="muted">afc3cf1893cf</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 05:19:29Z<br>→ 2026-06-11 05:25:50Z</td>
+        <td>6m 27s</td>
+        <td class="mono small">194 in / 1,154 out / 79,693 cw5m / 0 cw1h / 1,226,496 cr</td>
+        <td class="num">$1.14<br><span class="muted">R18.89</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a39205cbec5c</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-11 05:26:06Z<br>→ 2026-06-11 05:26:59Z</td>
+        <td>57s</td>
+        <td class="mono small">8 in / 1,100 out / 13,005 cw5m / 0 cw1h / 11,728 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.38</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">a09034273ccd</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 05:26:17Z<br>→ 2026-06-11 05:35:46Z</td>
+        <td>9m 34s</td>
+        <td class="mono small">4,433 in / 2,409 out / 65,670 cw5m / 0 cw1h / 926,913 cr</td>
+        <td class="num">$0.96<br><span class="muted">R15.83</span></td></tr><tr><td class="ag">developer<br><span class="muted">a434c5d8dd81</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 05:37:10Z<br>→ 2026-06-11 05:42:02Z</td>
+        <td>4m 56s</td>
+        <td class="mono small">178 in / 2,377 out / 72,476 cw5m / 0 cw1h / 580,780 cr</td>
+        <td class="num">$0.80<br><span class="muted">R13.31</span></td></tr><tr><td class="ag">playwright-runner<br><span class="muted">a9424325a34d</span></td>
+        <td>Haiku 4.5</td>
+        <td class="mono">2026-06-11 05:42:24Z<br>→ 2026-06-11 05:42:55Z</td>
+        <td>36s</td>
+        <td class="mono small">15 in / 49 out / 12,439 cw5m / 0 cw1h / 23,860 cr</td>
+        <td class="num">$0.02<br><span class="muted">R0.30</span></td></tr><tr><td class="ag">code-reviewer<br><span class="muted">ab1887c72c23</span></td>
+        <td>Opus 4.8</td>
+        <td class="mono">2026-06-11 05:42:32Z<br>→ 2026-06-11 05:43:08Z</td>
+        <td>41s</td>
+        <td class="mono small">160 in / 2,138 out / 44,090 cw5m / 0 cw1h / 15,336 cr</td>
+        <td class="num">$0.34<br><span class="muted">R5.59</span></td></tr></tbody></table></div>
+
+<h2>Cross-epic foreground &amp; other sessions</h2>
+<div class="wrap"><table><thead><tr><th>Session</th><th>Window / duration</th><th>Token mix</th><th>Cost</th></tr></thead><tbody>
+<tr class="epic-row"><td colspan="4"><b>Cross-epic foreground work (main loop, 4 build sessions)</b> — $63.21 · R1,046.57 · counted as build cost</td></tr>
+<tr class="epic-row"><td colspan="4" style="background:#121a2e"><b>Other sessions (utilities / monitoring / doc work)</b> — $23.29 · R385.61 · listed separately, not build</td></tr>
+<tr><td>claude-api reference lookup<br><span class="muted mono">353eff9f</span></td>
+    <td class="mono small">2026-06-09 09:45:24Z → 2026-06-09 09:53:26Z<br>8m 2s</td>
+    <td class="mono small">5,054 in / 29,898 out / 0 cw5m / 295,586 cw1h / 5,920,264 cr</td>
+    <td class="num">$6.69<br><span class="muted">R110.75</span></td></tr><tr><td>Pre-start session<br><span class="muted mono">b28ef095</span></td>
+    <td class="mono small">2026-06-09 09:09:28Z → 2026-06-09 09:43:52Z<br>34m 24s</td>
+    <td class="mono small">8,820 in / 70,039 out / 0 cw5m / 127,642 cw1h / 6,595,932 cr</td>
+    <td class="num">$6.37<br><span class="muted">R105.46</span></td></tr><tr><td>Pre-start session<br><span class="muted mono">aad7ea70</span></td>
+    <td class="mono small">2026-06-09 06:21:30Z → 2026-06-09 07:08:07Z<br>46m 38s</td>
+    <td class="mono small">6,115 in / 36,895 out / 0 cw5m / 78,061 cw1h / 3,091,038 cr</td>
+    <td class="num">$3.28<br><span class="muted">R54.29</span></td></tr><tr><td>This report (cost/duration analysis)<br><span class="muted mono">311063a8</span></td>
+    <td class="mono small">2026-06-11 10:13:34Z → 2026-06-11 10:24:10Z<br>10m 36s</td>
+    <td class="mono small">4,774 in / 42,699 out / 0 cw5m / 82,625 cw1h / 1,365,065 cr</td>
+    <td class="num">$2.60<br><span class="muted">R43.05</span></td></tr><tr><td>Pre-start session<br><span class="muted mono">7e6cb585</span></td>
+    <td class="mono small">2026-06-09 07:11:07Z → 2026-06-09 07:17:02Z<br>5m 55s</td>
+    <td class="mono small">5,046 in / 21,365 out / 0 cw5m / 62,079 cw1h / 1,390,804 cr</td>
+    <td class="num">$1.88<br><span class="muted">R31.05</span></td></tr><tr><td>Commit &amp; push (close-out, separate session)<br><span class="muted mono">74e8187d</span></td>
+    <td class="mono small">2026-06-11 06:06:32Z → 2026-06-11 06:15:25Z<br>8m 54s</td>
+    <td class="mono small">4,394 in / 7,196 out / 0 cw5m / 48,125 cw1h / 818,503 cr</td>
+    <td class="num">$1.09<br><span class="muted">R18.09</span></td></tr><tr><td>Doc work: timing report<br><span class="muted mono">19a15fcd</span></td>
+    <td class="mono small">2026-06-11 06:39:26Z → 2026-06-11 06:43:17Z<br>3m 51s</td>
+    <td class="mono small">4,650 in / 7,331 out / 0 cw5m / 26,271 cw1h / 292,066 cr</td>
+    <td class="num">$0.62<br><span class="muted">R10.19</span></td></tr><tr><td>Pre-start session<br><span class="muted mono">212788ea</span></td>
+    <td class="mono small">2026-06-09 09:56:51Z → 2026-06-09 09:58:41Z<br>1m 50s</td>
+    <td class="mono small">4,654 in / 1,862 out / 0 cw5m / 21,695 cw1h / 337,401 cr</td>
+    <td class="num">$0.46<br><span class="muted">R7.54</span></td></tr><tr><td>Pre-start setup / exploration<br><span class="muted mono">e18aaf5e</span></td>
+    <td class="mono small">2026-06-09 06:10:27Z → 2026-06-09 06:15:00Z<br>4m 33s</td>
+    <td class="mono small">5,134 in / 3,474 out / 0 cw5m / 13,264 cw1h / 135,357 cr</td>
+    <td class="num">$0.31<br><span class="muted">R5.18</span></td></tr>
+</tbody></table></div>
+
+<h2>Pricing</h2>
+<p class="sub">Anthropic list rates, platform.claude.com/docs pricing, retrieved 2026-06-11. Cache writes priced at 1.25× input (5-min TTL) and 2× input (1-hour TTL); cache reads at 0.1× input. 1 USD = 16.5576 ZAR (TradingEconomics mid-market, 2026-06-11).</p>
+<div class="wrap"><table><thead><tr><th>Model</th><th>Input /MTok</th><th>Output /MTok</th><th>Cache write 5m /MTok</th><th>Cache write 1h /MTok</th><th>Cache read /MTok</th></tr></thead><tbody><tr><td>Opus 4.8</td>
+    <td>$5.00 / R82.79</td>
+    <td>$25.00 / R413.94</td>
+    <td>$6.25 / R103.49</td>
+    <td>$10.00 / R165.58</td>
+    <td>$0.50 / R8.28</td></tr><tr><td>Sonnet 4.6</td>
+    <td>$3.00 / R49.67</td>
+    <td>$15.00 / R248.36</td>
+    <td>$3.75 / R62.09</td>
+    <td>$6.00 / R99.35</td>
+    <td>$0.30 / R4.97</td></tr><tr><td>Haiku 4.5</td>
+    <td>$1.00 / R16.56</td>
+    <td>$5.00 / R82.79</td>
+    <td>$1.25 / R20.70</td>
+    <td>$2.00 / R33.12</td>
+    <td>$0.10 / R1.66</td></tr></tbody></table></div>
+
+<h2>By model</h2>
+<div class="wrap"><table><thead><tr><th>Model</th><th>Messages</th><th>Token mix</th><th>Cost</th></tr></thead><tbody>
+<tr><td>Opus 4.8</td><td>2,275</td><td class="mono small">303,732 in / 890,968 out / 6,492,451 cw5m / 1,821,090 cw1h / 212,386,743 cr</td><td class="num">$188.77<br><span class="muted">R3,125.66</span></td></tr><tr><td>Haiku 4.5</td><td>185</td><td class="mono small">772 in / 11,242 out / 622,928 cw5m / 0 cw1h / 2,703,837 cr</td><td class="num">$1.11<br><span class="muted">R18.31</span></td></tr><tr><td>Sonnet 4.6</td><td>37</td><td class="mono small">5,458 in / 5,063 out / 139,496 cw5m / 0 cw1h / 1,449,727 cr</td><td class="num">$1.05<br><span class="muted">R17.39</span></td></tr>
+</tbody></table></div>
+
+<h2>Methodology &amp; caveats</h2>
+<div class="note"><ul>
+<li><b>Sources.</b> Every <code>*.jsonl</code> under <code>~/.claude/projects/c--Users-User-Downloads-benmark-stadium8-test2/</code>, including each session's <code>subagents/</code> folder. Messages are deduplicated by message id (2497 unique priced assistant messages from 143 files).</li>
+<li><b>Pricing.</b> Anthropic list rates, platform.claude.com/docs pricing, retrieved 2026-06-11. Per-message tokens split into input, output, cache-write 5-min, cache-write 1-hour, and cache-read, priced with the multipliers above, then summed per agent / story / epic.</li>
+<li><b>Currency.</b> 1 USD = 16.5576 ZAR (TradingEconomics mid-market, 2026-06-11). ZAR figures are USD × 16.5576; FX moves intraday so treat ZAR as indicative.</li>
+<li><b>Build vs other.</b> The four <code>/start</code> + <code>/continue</code> sessions (matching the timing log's "4 sessions") are the build; their main-loop messages are <b>cross-epic foreground work</b> and all count as build cost. All other sessions (pre-<code>/start</code> exploration, the <code>claude-api</code> lookup, the commit/push close-out, doc/report sessions including this one) are listed separately.</li>
+<li><b>Epic / story attribution.</b> Each sub-agent's epic &amp; story come from the first user message in its transcript (<code>storySlug:</code> / "Epic N, Story M"); its model, time window and duration come from its message timestamps. Main-loop foreground cost is a single cross-epic bucket — it is not split per epic (the timing event log does not carry fine per-epic main-loop boundaries).</li>
+<li><b>Timestamp-based timing.</b> PLAN active time is from <code>build-timing.jsonl</code>. Per-epic durations are <b>wall-clock windows</b> spanning that epic's sub-agents (they include some idle, unlike the "active" PLAN figure) — the BUILD phase's resume events lack matching yields, so true per-epic active time is not recoverable from the log. Manual-QA waits cost nothing and are excluded.</li>
+<li><b>Missing external sessions.</b> Part of <b>Epic 4 was run on Claude Web</b>, which leaves no local transcript — that work is absent here, so the local Epic 4 figure (session <code>04260c45</code>) understates Epic 4's true cost and duration.</li>
+<li><b>Fast mode.</b> Sampled messages show <code>service_tier: standard</code>, so Opus is priced at the standard $5/$25 rate; any Fast-Mode turns (which bill at $10/$50) would raise the true Opus cost.</li>
+<li><b>Cache-write mix.</b> Of 9,075,965 cache-write tokens, 1,821,090 are 1-hour TTL (priced 2× input) and 7,254,875 are 5-minute TTL (1.25× input). Claude Code mostly writes 1-hour cache, so cache cost here is higher than a flat 5-minute estimate.</li>
+<li><b>Supersedes the partial hook report.</b> The repo's hook-based <code>token-report.md</code> only captured 340 responses through 2026-06-09 11:37 (the tracker stopped firing after the first BUILD story, ~24.9M tokens / $22.86). This report re-parses the full transcript history (2,497 messages, 226,833,507 tokens) and is the complete picture.</li>
+</ul></div>
+<p class="sub" style="margin-top:24px">Time-vs-cost takeaways: sub-agents run concurrently (developer + code-reviewer + playwright-runner in parallel), so wall-clock is far shorter than summed agent time at the same token cost — the swarm buys speed for free. Idle gaps between turns (user decisions, manual QA) add wall-clock but zero tokens, so cost-per-active-minute is the honest efficiency measure.</p>
+</body></html>
